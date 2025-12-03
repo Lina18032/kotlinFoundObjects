@@ -1,5 +1,6 @@
 package com.example.mynewapplication.ui.screens.home
 
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.ui.screens.home.components.CategoryFilterSection
 import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.screens.home.components.SearchTopBar
@@ -18,6 +20,7 @@ import com.example.mynewapplication.ui.components.EmptyState
 @Composable
 fun HomeScreen(
     onAddClick: () -> Unit,
+    onItemClick: (LostItem) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -55,7 +58,7 @@ fun HomeScreen(
                     items(uiState.filteredItems) { item ->
                         ItemCard(
                             item = item,
-                            onClick = { /* TODO: Navigate to detail */ }
+                            onClick = { onItemClick(item) }
                         )
                     }
                 }
