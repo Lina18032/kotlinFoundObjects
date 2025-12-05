@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.example.mynewapplication.data.remote.CloudinaryService
 import com.example.mynewapplication.ui.theme.LguinahTheme
 import com.example.mynewapplication.ui.navigation.AppNavigation
 import com.example.mynewapplication.ui.screens.auth.LoginScreen
@@ -16,6 +17,9 @@ import com.example.mynewapplication.ui.screens.auth.WelcomeScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize Cloudinary
+        CloudinaryService.initialize(this)
         setContent {
             LguinahTheme {
                 Surface(
