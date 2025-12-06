@@ -92,9 +92,10 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(uiState.messages) { message ->
+                        val currentUserId = com.example.mynewapplication.data.remote.FirebaseService().getCurrentUser()?.uid
                         MessageBubble(
                             message = message,
-                            isOwnMessage = message.senderId == "current_user"
+                            isOwnMessage = message.senderId == currentUserId
                         )
                     }
                 }

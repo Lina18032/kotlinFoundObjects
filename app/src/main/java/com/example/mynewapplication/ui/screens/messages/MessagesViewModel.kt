@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mynewapplication.data.model.ChatConversation
 import com.example.mynewapplication.data.model.ChatMessage
+import com.example.mynewapplication.data.remote.FirebaseService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,7 @@ data class MessagesUiState(
 
 class MessagesViewModel : ViewModel() {
 
+    private val firebaseService = FirebaseService()
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState.asStateFlow()
 
@@ -26,61 +28,39 @@ class MessagesViewModel : ViewModel() {
 
     private fun loadConversations() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            // Sample data - will be replaced with Firebase later
-            val sampleConversations = listOf(
-                ChatConversation(
-                    id = "conv1",
-                    itemId = "item1",
-                    participants = listOf("current_user", "user1"),
-                    lastMessage = ChatMessage(
-                        id = "msg1",
-                        conversationId = "conv1",
-                        senderId = "user1",
-                        senderName = "Lina Lolem",
-                        text = "Yes, I still have them. When can you pick them up?",
-                        timestamp = System.currentTimeMillis() - 3600000,
-                        isRead = false
-                    ),
-                    updatedAt = System.currentTimeMillis() - 3600000
-                ),
-                ChatConversation(
-                    id = "conv2",
-                    itemId = "item2",
-                    participants = listOf("current_user", "user2"),
-                    lastMessage = ChatMessage(
-                        id = "msg2",
-                        conversationId = "conv2",
-                        senderId = "current_user",
-                        senderName = "Me",
-                        text = "Thank you so much! I'll come by tomorrow.",
-                        timestamp = System.currentTimeMillis() - 86400000,
-                        isRead = true
-                    ),
-                    updatedAt = System.currentTimeMillis() - 86400000
-                ),
-                ChatConversation(
-                    id = "conv3",
-                    itemId = "item3",
-                    participants = listOf("current_user", "user3"),
-                    lastMessage = ChatMessage(
-                        id = "msg3",
-                        conversationId = "conv3",
-                        senderId = "user3",
-                        senderName = "Ahmed Kaci",
-                        text = "Are you sure it's yours? Can you describe it?",
-                        timestamp = System.currentTimeMillis() - 172800000,
-                        isRead = true
-                    ),
-                    updatedAt = System.currentTimeMillis() - 172800000
+            try {
+                val currentUser = firebaseService.getCurrentUser()
+                if (currentUser == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Not logged in"
+                    )
+                    return@launch
+                }
+
+                val result = firebaseService.getUserConversations(currentUser.uid)
+                result.fold(
+                    onSuccess = { conversations ->
+                        _uiState.value = _uiState.value.copy(
+                            conversations = conversations,
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message ?: "Failed to load conversations"
+                        )
+                    }
                 )
-            )
-
-            _uiState.value = _uiState.value.copy(
-                conversations = sampleConversations.sortedByDescending { it.updatedAt },
-                isLoading = false
-            )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load conversations"
+                )
+            }
         }
     }
 
@@ -90,7 +70,11 @@ class MessagesViewModel : ViewModel() {
 
     fun markAsRead(conversationId: String) {
         viewModelScope.launch {
-            // TODO: Update in Firebase
+            val currentUser = firebaseService.getCurrentUser()
+            if (currentUser != null) {
+                firebaseService.markMessagesAsRead(conversationId, currentUser.uid)
+            }
+            
             val updatedConversations = _uiState.value.conversations.map { conversation ->
                 if (conversation.id == conversationId) {
                     conversation.copy(

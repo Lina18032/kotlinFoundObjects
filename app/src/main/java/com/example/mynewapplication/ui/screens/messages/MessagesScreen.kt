@@ -89,7 +89,8 @@ fun ConversationCard(
     onClick: () -> Unit
 ) {
     val lastMessage = conversation.lastMessage
-    val isUnread = lastMessage?.isRead == false && lastMessage.senderId != "current_user"
+    val currentUserId = com.example.mynewapplication.data.remote.FirebaseService().getCurrentUser()?.uid
+    val isUnread = lastMessage?.isRead == false && lastMessage.senderId != currentUserId
 
     Card(
         modifier = Modifier

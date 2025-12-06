@@ -99,7 +99,7 @@ class CloudinaryService(private val context: Context) {
             }
             
             val urls = mutableListOf<String>()
-            val errors = mutableListOf<Exception>()
+            val errors = mutableListOf<Throwable>()
             
             uploadResults.forEach { result ->
                 result.fold(
@@ -109,7 +109,7 @@ class CloudinaryService(private val context: Context) {
             }
             
             if (errors.isNotEmpty()) {
-                Result.failure(Exception("Some uploads failed: ${errors.joinToString { it.message }}"))
+                Result.failure(Exception("Some uploads failed: ${errors.joinToString { it.message ?: it.toString() }}"))
             } else {
                 Result.success(urls)
             }

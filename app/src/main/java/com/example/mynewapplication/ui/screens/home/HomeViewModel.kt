@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.mynewapplication.data.model.Category
 import com.example.mynewapplication.data.model.ItemStatus
 import com.example.mynewapplication.data.model.LostItem
+import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.utils.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ data class HomeUiState(
 
 class HomeViewModel : ViewModel() {
 
+    private val firebaseService = FirebaseService()
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -33,93 +35,121 @@ class HomeViewModel : ViewModel() {
 
     private fun loadItems() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            // Sample data - will be replaced with Firebase later
-            val sampleItems = listOf(
-                LostItem(
-                    id = "1",
-                    title = "Keys with blue keychain",
-                    description = "Lost my keys near Block B, have a blue keychain with ESTIN logo",
-                    category = Category.KEYS,
-                    location = "Block B",
-                    timestamp = System.currentTimeMillis() - 7200000, // 2 hours ago
-                    status = ItemStatus.LOST,
-                    userId = "user1",
-                    userName = "Lina Lolem",
-                    userEmail = "lina.lolem@estin.dz"
-                ),
-                LostItem(
-                    id = "2",
-                    title = "Student Card",
-                    description = "Found a student card in Amphi 3. Name starts with 'A'",
-                    category = Category.CARDS,
-                    location = "Amphi 3",
-                    timestamp = System.currentTimeMillis() - 18000000, // 5 hours ago
-                    status = ItemStatus.FOUND,
-                    userId = "user2",
-                    userName = "Ahmed Kaci",
-                    userEmail = "ahmed.kaci@estin.dz"
-                ),
-                LostItem(
-                    id = "3",
-                    title = "AirPods Case",
-                    description = "Lost my AirPods case near the library. White color",
-                    category = Category.ELECTRONICS,
-                    location = "Library",
-                    timestamp = System.currentTimeMillis() - 86400000, // 1 day ago
-                    status = ItemStatus.LOST,
-                    userId = "user3",
-                    userName = "Sarah Mansouri",
-                    userEmail = "sarah.mansouri@estin.dz"
-                ),
-                LostItem(
-                    id = "4",
-                    title = "Black Backpack",
-                    description = "Found a black Nike backpack in the cafeteria",
-                    category = Category.BAGS,
-                    location = "Cafeteria",
-                    timestamp = System.currentTimeMillis() - 3600000, // 1 hour ago
-                    status = ItemStatus.FOUND,
-                    userId = "user4",
-                    userName = "Karim Benali",
-                    userEmail = "karim.benali@estin.dz"
-                ),
-                LostItem(
-                    id = "5",
-                    title = "USB Flash Drive",
-                    description = "Lost 32GB SanDisk USB drive with important projects",
-                    category = Category.ELECTRONICS,
-                    location = "Computer Lab 2",
-                    timestamp = System.currentTimeMillis() - 172800000, // 2 days ago
-                    status = ItemStatus.LOST,
-                    userId = "user5",
-                    userName = "Yasmine Abdallah",
-                    userEmail = "yasmine.abdallah@estin.dz"
+            try {
+                val result = firebaseService.getAllLostItems(limit = 100)
+                result.fold(
+                    onSuccess = { items ->
+                        _uiState.value = _uiState.value.copy(
+                            items = items,
+                            filteredItems = items,
+                            isLoading = false
+                        )
+                        filterItems()
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message ?: "Failed to load items"
+                        )
+                    }
                 )
-            )
-
-            _uiState.value = _uiState.value.copy(
-                items = sampleItems,
-                filteredItems = sampleItems,
-                isLoading = false
-            )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load items"
+                )
+            }
         }
     }
 
     fun onSearchQueryChange(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
-        filterItems()
+        if (query.isNotEmpty()) {
+            searchItems(query)
+        } else {
+            filterItems()
+        }
+    }
+
+    private fun searchItems(query: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val result = firebaseService.searchLostItems(query)
+                result.fold(
+                    onSuccess = { items ->
+                        _uiState.value = _uiState.value.copy(
+                            filteredItems = items,
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
     }
 
     fun onCategorySelected(category: Category?) {
         _uiState.value = _uiState.value.copy(selectedCategory = category)
-        filterItems()
+        if (_uiState.value.searchQuery.isEmpty()) {
+            loadItemsWithFilters(category, _uiState.value.selectedStatus)
+        } else {
+            filterItems()
+        }
     }
 
     fun onStatusSelected(status: ItemStatus?) {
         _uiState.value = _uiState.value.copy(selectedStatus = status)
-        filterItems()
+        if (_uiState.value.searchQuery.isEmpty()) {
+            loadItemsWithFilters(_uiState.value.selectedCategory, status)
+        } else {
+            filterItems()
+        }
+    }
+
+    private fun loadItemsWithFilters(category: Category?, status: ItemStatus?) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val result = firebaseService.getAllLostItems(
+                    category = category?.name,
+                    status = status?.name,
+                    limit = 100
+                )
+                result.fold(
+                    onSuccess = { items ->
+                        _uiState.value = _uiState.value.copy(
+                            items = items,
+                            filteredItems = items,
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
     }
 
     fun toggleFilters() {

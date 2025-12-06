@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.example.mynewapplication.data.model.LostItem
+import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.ui.components.BottomNavigationBar
 import com.example.mynewapplication.ui.screens.home.HomeScreen
 import com.example.mynewapplication.ui.screens.add.AddItemScreen
@@ -21,12 +22,16 @@ import com.example.mynewapplication.ui.screens.profile.ProfileScreen
 import com.example.mynewapplication.ui.screens.detail.ItemDetailScreen
 import com.example.mynewapplication.ui.theme.DarkBackground
 import com.example.mynewapplication.ui.theme.PrimaryBlue
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
+    val firebaseService = remember { FirebaseService() }
+    val coroutineScope = rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
     var selectedConversationId by remember { mutableStateOf<String?>(null) }
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
+    var isLoadingConversation by remember { mutableStateOf(false) }
 
     // Show item detail screen
     if (selectedItem != null) {
@@ -34,11 +39,44 @@ fun AppNavigation() {
             item = selectedItem!!,
             onBack = { selectedItem = null },
             onContactClick = {
-                // TODO: Open chat with item owner
-                selectedItem = null
-                currentScreen = Screen.Messages
+                val item = selectedItem!!
+                val currentUser = firebaseService.getCurrentUser()
+                
+                if (currentUser != null && item.userId != currentUser.uid) {
+                    isLoadingConversation = true
+                    coroutineScope.launch {
+                        val result = firebaseService.getOrCreateConversation(
+                            item.id,
+                            item.userId
+                        )
+                        result.fold(
+                            onSuccess = { conversationId ->
+                                selectedConversationId = conversationId
+                                selectedItem = null
+                                currentScreen = Screen.Messages
+                                isLoadingConversation = false
+                            },
+                            onFailure = {
+                                isLoadingConversation = false
+                                // Handle error - could show snackbar
+                            }
+                        )
+                    }
+                } else {
+                    selectedItem = null
+                    currentScreen = Screen.Messages
+                }
             }
         )
+    }
+    
+    if (isLoadingConversation) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
     }
     // Show chat screen
     else if (selectedConversationId != null) {

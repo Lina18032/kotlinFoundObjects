@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.data.model.ItemStatus
 import com.example.mynewapplication.data.model.User
+import com.example.mynewapplication.data.remote.FirebaseService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,7 @@ data class ProfileUiState(
 
 class ProfileViewModel : ViewModel() {
 
+    private val firebaseService = FirebaseService()
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
@@ -32,66 +34,53 @@ class ProfileViewModel : ViewModel() {
 
     private fun loadProfile() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            // Sample user data - will be replaced with Firebase later
-            val sampleUser = User(
-                id = "current_user",
-                name = "Ahmed Benali",
-                email = "ahmed.benali@estin.dz",
-                profileImageUrl = null,
-                phoneNumber = "+213 555 123 456"
-            )
+            try {
+                val currentUser = firebaseService.getCurrentUser()
+                if (currentUser == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Not logged in"
+                    )
+                    return@launch
+                }
 
-            // Sample items posted by user
-            val myLostItems = listOf(
-                LostItem(
-                    id = "my1",
-                    title = "Black Backpack",
-                    description = "Lost my Nike backpack in the cafeteria",
-                    category = com.example.mynewapplication.data.model.Category.BAGS,
-                    location = "Cafeteria",
-                    timestamp = System.currentTimeMillis() - 86400000,
-                    status = ItemStatus.LOST,
-                    userId = "current_user",
-                    userName = "Ahmed Benali",
-                    userEmail = "ahmed.benali@estin.dz"
-                ),
-                LostItem(
-                    id = "my2",
-                    title = "USB Flash Drive",
-                    description = "32GB SanDisk USB with important files",
-                    category = com.example.mynewapplication.data.model.Category.ELECTRONICS,
-                    location = "Computer Lab 2",
-                    timestamp = System.currentTimeMillis() - 172800000,
-                    status = ItemStatus.LOST,
-                    userId = "current_user",
-                    userName = "Ahmed Benali",
-                    userEmail = "ahmed.benali@estin.dz"
+                // Load user data
+                val userResult = firebaseService.getCurrentUserData()
+                val user = userResult.getOrElse {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = it.message ?: "Failed to load user data"
+                    )
+                    return@launch
+                }
+
+                // Load user's items
+                val itemsResult = firebaseService.getUserLostItems(currentUser.uid)
+                val allItems = itemsResult.getOrElse {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = it.message ?: "Failed to load items"
+                    )
+                    return@launch
+                }
+
+                val lostItems = allItems.filter { it.status == ItemStatus.LOST }
+                val foundItems = allItems.filter { it.status == ItemStatus.FOUND }
+
+                _uiState.value = _uiState.value.copy(
+                    user = user,
+                    myLostItems = lostItems,
+                    myFoundItems = foundItems,
+                    isLoading = false
                 )
-            )
-
-            val myFoundItems = listOf(
-                LostItem(
-                    id = "my3",
-                    title = "Student Card",
-                    description = "Found a student card in Amphi 3",
-                    category = com.example.mynewapplication.data.model.Category.CARDS,
-                    location = "Amphi 3",
-                    timestamp = System.currentTimeMillis() - 43200000,
-                    status = ItemStatus.FOUND,
-                    userId = "current_user",
-                    userName = "Ahmed Benali",
-                    userEmail = "ahmed.benali@estin.dz"
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load profile"
                 )
-            )
-
-            _uiState.value = _uiState.value.copy(
-                user = sampleUser,
-                myLostItems = myLostItems,
-                myFoundItems = myFoundItems,
-                isLoading = false
-            )
+            }
         }
     }
 
@@ -109,32 +98,85 @@ class ProfileViewModel : ViewModel() {
 
     fun updateProfile(name: String, phoneNumber: String) {
         viewModelScope.launch {
-            // TODO: Update in Firebase
-            val updatedUser = _uiState.value.user?.copy(
-                name = name,
-                phoneNumber = phoneNumber
-            )
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            
+            val currentUser = firebaseService.getCurrentUser()
+            if (currentUser == null) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Not logged in"
+                )
+                return@launch
+            }
 
-            _uiState.value = _uiState.value.copy(
-                user = updatedUser,
-                showEditDialog = false
-            )
+            try {
+                val result = firebaseService.updateUserProfile(
+                    currentUser.uid,
+                    name,
+                    phoneNumber.ifEmpty { null }
+                )
+
+                result.fold(
+                    onSuccess = {
+                        val updatedUser = _uiState.value.user?.copy(
+                            name = name,
+                            phoneNumber = phoneNumber.ifEmpty { null }
+                        )
+                        _uiState.value = _uiState.value.copy(
+                            user = updatedUser,
+                            showEditDialog = false,
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message ?: "Failed to update profile"
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to update profile"
+                )
+            }
         }
     }
 
     fun deleteItem(itemId: String) {
         viewModelScope.launch {
-            // TODO: Delete from Firebase
-            _uiState.value = _uiState.value.copy(
-                myLostItems = _uiState.value.myLostItems.filter { it.id != itemId },
-                myFoundItems = _uiState.value.myFoundItems.filter { it.id != itemId }
-            )
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            
+            try {
+                val result = firebaseService.deleteLostItem(itemId)
+                result.fold(
+                    onSuccess = {
+                        _uiState.value = _uiState.value.copy(
+                            myLostItems = _uiState.value.myLostItems.filter { it.id != itemId },
+                            myFoundItems = _uiState.value.myFoundItems.filter { it.id != itemId },
+                            isLoading = false
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message ?: "Failed to delete item"
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to delete item"
+                )
+            }
         }
     }
 
     fun logout(onLogoutComplete: () -> Unit) {
         viewModelScope.launch {
-            // TODO: Sign out from Firebase
+            firebaseService.signOut()
             onLogoutComplete()
         }
     }

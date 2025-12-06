@@ -1,6 +1,9 @@
 package com.example.mynewapplication.ui.screens.auth
 
 
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -23,10 +27,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.ui.components.LguinahTextField
 import com.example.mynewapplication.ui.components.PrimaryButton
 import com.example.mynewapplication.ui.theme.*
 import com.example.mynewapplication.utils.Constants
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +43,35 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var passwordVisible by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val firebaseService = remember { FirebaseService() }
+
+    // Google Sign-In launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.result
+            viewModel.handleGoogleSignInResult(account, onLoginSuccess)
+        } catch (e: Exception) {
+            viewModel.handleGoogleSignInResult(null, onLoginSuccess)
+        }
+    }
 
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
             onLoginSuccess()
+        }
+    }
+
+    fun launchGoogleSignIn() {
+        try {
+            val googleSignInClient = firebaseService.getGoogleSignInClient(context)
+            val signInIntent = googleSignInClient.signInIntent
+            googleSignInLauncher.launch(signInIntent)
+        } catch (e: Exception) {
+            // Error will be shown in UI state if web client ID is missing
         }
     }
 
@@ -109,7 +141,7 @@ fun LoginScreen(
 
             // Google Sign In Button
             GoogleSignInButton(
-                onClick = { viewModel.signInWithGoogle(onLoginSuccess) },
+                onClick = { launchGoogleSignIn() },
                 isLoading = uiState.isGoogleSignInLoading
             )
 

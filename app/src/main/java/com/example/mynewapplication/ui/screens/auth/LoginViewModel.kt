@@ -2,12 +2,12 @@ package com.example.mynewapplication.ui.screens.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.utils.ValidationUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 data class LoginUiState(
     val email: String = "",
@@ -22,6 +22,7 @@ data class LoginUiState(
 
 class LoginViewModel : ViewModel() {
 
+    private val firebaseService = FirebaseService()
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
@@ -54,30 +55,48 @@ class LoginViewModel : ViewModel() {
             return
         }
 
+        // Check if email ends with @estin.dz
+        if (!_uiState.value.email.endsWith("@estin.dz")) {
+            _uiState.value = _uiState.value.copy(
+                emailError = "Only @estin.dz emails are allowed"
+            )
+            return
+        }
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
 
             try {
-                // TODO: Firebase Authentication
-                // Simulate network call
-                delay(1500)
-
-                // For now, just check if email ends with @estin.dz
-                if (!_uiState.value.email.endsWith("@estin.dz")) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = "Only @estin.dz emails are allowed"
-                    )
-                    return@launch
-                }
-
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    isLoggedIn = true
+                val result = firebaseService.signInWithEmailAndPassword(
+                    _uiState.value.email,
+                    _uiState.value.password
                 )
 
-                onSuccess()
-
+                result.fold(
+                    onSuccess = {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isLoggedIn = true
+                        )
+                        onSuccess()
+                    },
+                    onFailure = { error ->
+                        val errorMessage = when {
+                            error.message?.contains("password") == true -> 
+                                "Invalid password. Please try again."
+                            error.message?.contains("user") == true || 
+                            error.message?.contains("email") == true -> 
+                                "No account found with this email. Please sign up first."
+                            error.message?.contains("network") == true -> 
+                                "Network error. Please check your connection."
+                            else -> error.message ?: "Login failed. Please try again."
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            errorMessage = errorMessage
+                        )
+                    }
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -87,7 +106,19 @@ class LoginViewModel : ViewModel() {
         }
     }
 
-    fun signInWithGoogle(onSuccess: () -> Unit) {
+    /**
+     * Handle Google Sign-In result
+     * This is called after Google Sign-In activity returns
+     */
+    fun handleGoogleSignInResult(account: com.google.android.gms.auth.api.signin.GoogleSignInAccount?, onSuccess: () -> Unit) {
+        if (account == null) {
+            _uiState.value = _uiState.value.copy(
+                isGoogleSignInLoading = false,
+                errorMessage = "Google Sign-In was cancelled"
+            )
+            return
+        }
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isGoogleSignInLoading = true,
@@ -95,22 +126,36 @@ class LoginViewModel : ViewModel() {
             )
 
             try {
-                // TODO: Firebase Google Sign-In
-                // Simulate network call
-                delay(2000)
+                // Check if email ends with @estin.dz
+                if (account.email?.endsWith("@estin.dz") != true) {
+                    _uiState.value = _uiState.value.copy(
+                        isGoogleSignInLoading = false,
+                        errorMessage = "Only @estin.dz emails are allowed"
+                    )
+                    return@launch
+                }
 
-                // Simulate successful Google Sign-In
-                _uiState.value = _uiState.value.copy(
-                    isGoogleSignInLoading = false,
-                    isLoggedIn = true
+                val result = firebaseService.signInWithGoogle(account)
+
+                result.fold(
+                    onSuccess = {
+                        _uiState.value = _uiState.value.copy(
+                            isGoogleSignInLoading = false,
+                            isLoggedIn = true
+                        )
+                        onSuccess()
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isGoogleSignInLoading = false,
+                            errorMessage = error.message ?: "Google Sign-In failed. Please try again."
+                        )
+                    }
                 )
-
-                onSuccess()
-
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isGoogleSignInLoading = false,
-                    errorMessage = "Google Sign-In failed. Please try again."
+                    errorMessage = e.message ?: "Google Sign-In failed. Please try again."
                 )
             }
         }
