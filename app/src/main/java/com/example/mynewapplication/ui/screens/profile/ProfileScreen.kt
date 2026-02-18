@@ -1,7 +1,5 @@
 package com.example.mynewapplication.ui.screens.profile
 
-
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,16 +21,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.ui.components.EmptyState
 import com.example.mynewapplication.ui.components.LoadingIndicator
-import com.example.mynewapplication.ui.components.UserAvatar
-import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
+    onLogout: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(uiState.onLogoutComplete) {
+        if (uiState.onLogoutComplete) {
+            onLogout()
+            viewModel.onLogoutComplete()
+        }
+    }
 
     if (uiState.isLoading) {
         LoadingIndicator()
@@ -42,7 +46,7 @@ fun ProfileScreen(
             ProfileHeader(
                 user = uiState.user,
                 onEditClick = viewModel::showEditDialog,
-                onLogoutClick = { viewModel.logout {} }
+                onLogoutClick = { viewModel.logout() }
             )
 
             // Tabs
@@ -85,12 +89,12 @@ fun ProfileScreen(
             when (uiState.selectedTab) {
                 0 -> ItemsList(
                     items = uiState.myLostItems,
-                    emptyMessage = "You haven't reported any lost items yet",
+                    emptyMessage = "You haven\'t reported any lost items yet",
                     onDeleteItem = viewModel::deleteItem
                 )
                 1 -> ItemsList(
                     items = uiState.myFoundItems,
-                    emptyMessage = "You haven't reported any found items yet",
+                    emptyMessage = "You haven\'t reported any found items yet",
                     onDeleteItem = viewModel::deleteItem
                 )
             }

@@ -1,133 +1,60 @@
-// File: ui/navigation/AppNavigation.kt
 package com.example.mynewapplication.ui.navigation
 
-
-
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import com.example.mynewapplication.data.model.LostItem
-import com.example.mynewapplication.data.remote.FirebaseService
-import com.example.mynewapplication.ui.components.BottomNavigationBar
-import com.example.mynewapplication.ui.screens.home.HomeScreen
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.mynewapplication.ui.screens.add.AddItemScreen
-import com.example.mynewapplication.ui.screens.messages.MessagesScreen
+import com.example.mynewapplication.ui.screens.home.HomeScreen
 import com.example.mynewapplication.ui.screens.messages.ChatScreen
+import com.example.mynewapplication.ui.screens.messages.MessagesScreen
 import com.example.mynewapplication.ui.screens.profile.ProfileScreen
-import com.example.mynewapplication.ui.screens.detail.ItemDetailScreen
 import com.example.mynewapplication.ui.theme.DarkBackground
-import com.example.mynewapplication.ui.theme.PrimaryBlue
-import kotlinx.coroutines.launch
 
 @Composable
-fun AppNavigation() {
-    val firebaseService = remember { FirebaseService() }
-    val coroutineScope = rememberCoroutineScope()
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
-    var selectedConversationId by remember { mutableStateOf<String?>(null) }
-    var selectedItem by remember { mutableStateOf<LostItem?>(null) }
-    var isLoadingConversation by remember { mutableStateOf(false) }
+fun AppNavigation(onLogout: () -> Unit) {
+    val navController = rememberNavController()
 
-    // Show item detail screen
-    if (selectedItem != null) {
-        ItemDetailScreen(
-            item = selectedItem!!,
-            onBack = { selectedItem = null },
-            onContactClick = {
-                val item = selectedItem!!
-                val currentUser = firebaseService.getCurrentUser()
-                
-                if (currentUser != null && item.userId != currentUser.uid) {
-                    isLoadingConversation = true
-                    coroutineScope.launch {
-                        val result = firebaseService.getOrCreateConversation(
-                            item.id,
-                            item.userId
-                        )
-                        result.fold(
-                            onSuccess = { conversationId ->
-                                selectedConversationId = conversationId
-                                selectedItem = null
-                                currentScreen = Screen.Messages
-                                isLoadingConversation = false
-                            },
-                            onFailure = {
-                                isLoadingConversation = false
-                                // Handle error - could show snackbar
-                            }
-                        )
-                    }
-                } else {
-                    selectedItem = null
-                    currentScreen = Screen.Messages
-                }
-            }
-        )
-    }
-    
-    if (isLoadingConversation) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = androidx.compose.ui.Alignment.Center
-        ) {
-            CircularProgressIndicator()
+    Scaffold(
+        containerColor = DarkBackground,
+        bottomBar = {
+            BottomNavigationBar(navController = navController)
         }
-    }
-    // Show chat screen
-    else if (selectedConversationId != null) {
-        ChatScreen(
-            conversationId = selectedConversationId!!,
-            onBack = { selectedConversationId = null }
-        )
-    }
-    // Show main app
-    else {
-        Scaffold(
-            containerColor = DarkBackground,
-            bottomBar = {
-                BottomNavigationBar(
-                    currentScreen = currentScreen,
-                    onScreenChange = { currentScreen = it }
-                )
-            },
-            floatingActionButton = {
-                if (currentScreen is Screen.Home) {
-                    FloatingActionButton(
-                        onClick = { currentScreen = Screen.Add },
-                        containerColor = PrimaryBlue,
-                        contentColor = Color.White,
-                        shape = CircleShape
-                    ) {
-                        Icon(Icons.Default.Add, "Add Item")
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Home.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onAddClick = { navController.navigate(Screen.Add.route) },
+                    onItemClick = { item ->
+                        // In a real app, you'd navigate to a detail screen
+                        // For now, we do nothing to keep it simple
                     }
-                }
+                )
             }
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                when (currentScreen) {
-                    is Screen.Home -> HomeScreen(
-                        onAddClick = { currentScreen = Screen.Add },
-                        onItemClick = { item -> selectedItem = item }
-                    )
-                    is Screen.Add -> AddItemScreen(onBack = { currentScreen = Screen.Home })
-                    is Screen.Messages -> MessagesScreen(
-                        onConversationClick = { conversationId ->
-                            selectedConversationId = conversationId
-                        }
-                    )
-                    is Screen.Profile -> ProfileScreen()
-                    else -> HomeScreen(
-                        onAddClick = { currentScreen = Screen.Add },
-                        onItemClick = { item -> selectedItem = item }
+            composable(Screen.Add.route) {
+                AddItemScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Screen.Messages.route) {
+                MessagesScreen(onConversationClick = { conversationId ->
+                    navController.navigate(Screen.Chat.createRoute(conversationId))
+                })
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen(onLogout = onLogout)
+            }
+            composable(Screen.Chat.route) { backStackEntry ->
+                val conversationId = backStackEntry.arguments?.getString("conversationId")
+                if (conversationId != null) {
+                    ChatScreen(
+                        conversationId = conversationId,
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }

@@ -19,7 +19,8 @@ data class ProfileUiState(
     val selectedTab: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val showEditDialog: Boolean = false
+    val showEditDialog: Boolean = false,
+    val onLogoutComplete: Boolean = false
 )
 
 class ProfileViewModel : ViewModel() {
@@ -174,11 +175,14 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    fun logout(onLogoutComplete: () -> Unit) {
+    fun logout() {
         viewModelScope.launch {
-            firebaseService.signOut()
-            onLogoutComplete()
+            _uiState.value = _uiState.value.copy(onLogoutComplete = true)
         }
+    }
+
+    fun onLogoutComplete() {
+        _uiState.value = _uiState.value.copy(onLogoutComplete = false)
     }
 
     fun refreshProfile() {
