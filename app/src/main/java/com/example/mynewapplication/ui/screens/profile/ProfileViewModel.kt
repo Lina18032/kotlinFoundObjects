@@ -21,6 +21,7 @@ data class ProfileUiState(
     val error: String? = null,
     val showEditDialog: Boolean = false,
     val onLogoutComplete: Boolean = false
+
 )
 
 class ProfileViewModel : ViewModel() {
