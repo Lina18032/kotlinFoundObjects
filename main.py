@@ -61,7 +61,7 @@ def check_api_key(x_api_key: str = Header(...)):
 @app.get("/health", tags=["System"])
 async def health():
     """Quick liveness check."""
-    return {"status": "ok", "service": "LGUINAH Matching API", "model": settings.GEMINI_MODEL}
+    return {"status": "ok", "service": "LGUINAH Matching API", "model": settings.GROQ_MODEL}
 
 
 @app.post(

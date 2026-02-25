@@ -11,10 +11,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,101 +28,83 @@ import com.example.mynewapplication.ui.components.UserAvatar
 import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit,
     onItemClick: (LostItem) -> Unit,
-    refreshTrigger: Int = 0,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(refreshTrigger) {
-        viewModel.refreshProfile()
-    }
+    if (uiState.isLoading && uiState.myLostItems.isEmpty() && uiState.myFoundItems.isEmpty()) {
+        LoadingIndicator()
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header
+            ProfileHeader(
+                user = uiState.user,
+                onEditClick = viewModel::showEditDialog,
+                onLogoutClick = {
+                    viewModel.logout(context) {
+                        onLogout()
+                    }
+                }
+            )
 
-    val pullRefreshState = rememberPullRefreshState(
-        refreshing = uiState.isLoading,
-        onRefresh = { viewModel.refreshProfile() }
-    )
-
-    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
-        if (uiState.isLoading && uiState.myLostItems.isEmpty() && uiState.myFoundItems.isEmpty()) {
-            LoadingIndicator()
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Header
-                ProfileHeader(
-                    user = uiState.user,
-                    onEditClick = viewModel::showEditDialog,
-                    onLogoutClick = {
-                        viewModel.logout(context) {
-                            onLogout()
+            // Tabs
+            TabRow(
+                selectedTabIndex = uiState.selectedTab,
+                containerColor = DarkSurface,
+                contentColor = PrimaryBlue
+            ) {
+                Tab(
+                    selected = uiState.selectedTab == 0,
+                    onClick = { viewModel.onTabSelected(0) },
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Lost")
+                            Text(
+                                "(${uiState.myLostItems.size})",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
                         }
                     }
                 )
-
-                // Tabs
-                TabRow(
-                    selectedTabIndex = uiState.selectedTab,
-                    containerColor = DarkSurface,
-                    contentColor = PrimaryBlue
-                ) {
-                    Tab(
-                        selected = uiState.selectedTab == 0,
-                        onClick = { viewModel.onTabSelected(0) },
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Lost")
-                                Text(
-                                    "(${uiState.myLostItems.size})",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
+                Tab(
+                    selected = uiState.selectedTab == 1,
+                    onClick = { viewModel.onTabSelected(1) },
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Found")
+                            Text(
+                                "(${uiState.myFoundItems.size})",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
                         }
-                    )
-                    Tab(
-                        selected = uiState.selectedTab == 1,
-                        onClick = { viewModel.onTabSelected(1) },
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Found")
-                                Text(
-                                    "(${uiState.myFoundItems.size})",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    )
-                }
+                    }
+                )
+            }
 
-                // Content
-                when (uiState.selectedTab) {
-                    0 -> ItemsList(
-                        items = uiState.myLostItems,
-                        emptyMessage = "You haven't reported any lost items yet",
-                        onDeleteItem = viewModel::deleteItem,
-                        onItemClick = onItemClick
-                    )
-                    1 -> ItemsList(
-                        items = uiState.myFoundItems,
-                        emptyMessage = "You haven't reported any found items yet",
-                        onDeleteItem = viewModel::deleteItem,
-                        onItemClick = onItemClick
-                    )
-                }
+            // Content
+            when (uiState.selectedTab) {
+                0 -> ItemsList(
+                    items = uiState.myLostItems,
+                    emptyMessage = "You haven't reported any lost items yet",
+                    onDeleteItem = viewModel::deleteItem,
+                    onItemClick = onItemClick
+                )
+                1 -> ItemsList(
+                    items = uiState.myFoundItems,
+                    emptyMessage = "You haven't reported any found items yet",
+                    onDeleteItem = viewModel::deleteItem,
+                    onItemClick = onItemClick
+                )
             }
         }
-        
-        PullRefreshIndicator(
-            refreshing = uiState.isLoading,
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
     }
 
     // Edit Dialog

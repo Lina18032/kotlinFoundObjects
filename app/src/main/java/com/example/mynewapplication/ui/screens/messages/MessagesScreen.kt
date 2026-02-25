@@ -10,10 +10,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Message
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,18 +27,13 @@ import com.example.mynewapplication.ui.components.LoadingIndicator
 import com.example.mynewapplication.ui.components.UserAvatar
 import com.example.mynewapplication.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(
     onConversationClick: (String) -> Unit = {},
     viewModel: MessagesViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    val pullRefreshState = rememberPullRefreshState(
-        refreshing = uiState.isLoading,
-        onRefresh = { viewModel.refreshConversations() }
-    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top Bar
@@ -59,7 +50,7 @@ fun MessagesScreen(
             )
         )
 
-        Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // Debug: Show if loading
             if (uiState.isLoading && uiState.conversations.isEmpty()) {
                 LoadingIndicator()
@@ -91,12 +82,6 @@ fun MessagesScreen(
                     }
                 }
             }
-
-            PullRefreshIndicator(
-                refreshing = uiState.isLoading,
-                state = pullRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
         }
     }
 }

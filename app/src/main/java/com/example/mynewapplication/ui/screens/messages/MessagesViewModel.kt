@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.Job
 
 data class MessagesUiState(
     val conversations: List<ChatConversation> = emptyList(),
@@ -24,14 +22,11 @@ class MessagesViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState.asStateFlow()
 
-    private var listenerJob: Job? = null
-
     init {
-        startListening()
+        loadConversations()
     }
 
-    private fun startListening() {
-        listenerJob?.cancel()
+    private fun loadConversations() {
         val currentUser = firebaseService.getCurrentUser()
         if (currentUser == null) {
             _uiState.value = _uiState.value.copy(error = "Not logged in")
@@ -39,26 +34,32 @@ class MessagesViewModel : ViewModel() {
         }
 
         _uiState.value = _uiState.value.copy(isLoading = true)
-        
-        listenerJob = viewModelScope.launch {
-            firebaseService.listenToConversations(currentUser.uid)
-                .catch { e ->
+
+        viewModelScope.launch {
+            try {
+                val result = firebaseService.getUserConversations(currentUser.uid)
+                result.fold(
+                    onSuccess = { conversations ->
+                        _uiState.value = _uiState.value.copy(
+                            conversations = conversations,
+                            isLoading = false,
+                            error = null
+                        )
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = error.message ?: "Failed to load conversations"
+                        )
+                    }
+                )
+            } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Failed to listen to conversations"
+                        error = e.message ?: "Failed to load conversations"
                     )
-                }
-                .collect { conversations ->
-                    _uiState.value = _uiState.value.copy(
-                        conversations = conversations,
-                        isLoading = false
-                    )
-                }
+            }
         }
-    }
-
-    private fun loadConversations() {
-        startListening()
     }
 
     fun refreshConversations() {

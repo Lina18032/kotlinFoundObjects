@@ -431,47 +431,68 @@ class FirebaseService {
     }
     
     fun listenToConversations(userId: String): Flow<List<ChatConversation>> = callbackFlow {
-        val listener = firestore.collection("conversations")
-            .whereArrayContains("participants", userId)
-            .orderBy("updatedAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
+        var listener: ListenerRegistration? = null
+
+        fun attachListener(withOrderBy: Boolean) {
+            var query: Query = firestore.collection("conversations")
+                .whereArrayContains("participants", userId)
+            if (withOrderBy) {
+                query = query.orderBy("updatedAt", Query.Direction.DESCENDING)
+            }
+
+            listener = query.addSnapshotListener { snapshot, error ->
                 if (error != null) {
+                    val firestoreError = error as? FirebaseFirestoreException
+                    if (withOrderBy && firestoreError?.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        listener?.remove()
+                        attachListener(withOrderBy = false)
+                        return@addSnapshotListener
+                    }
                     close(error)
                     return@addSnapshotListener
                 }
-                
+
                 if (snapshot != null) {
-                    // We run this in runBlocking to reuse the suspend functions, 
-                    // though it's not ideal for high frequency updates, it's consistent with existing logic.
-                    // In a production app, we would cache user/item data more effectively.
                     val conversations = runBlocking {
                         snapshot.documents.mapNotNull { doc ->
                             try {
                                 val itemId = doc.getString("itemId") ?: return@mapNotNull null
                                 val participants = (doc.get("participants") as? List<*>)?.mapNotNull { it as? String } ?: return@mapNotNull null
-                                
-                                val lastMessageSnapshot = firestore.collection("messages")
-                                    .whereEqualTo("conversationId", doc.id)
-                                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                                    .limit(1)
-                                    .get()
-                                    .await()
-                                
+
+                                val lastMessageSnapshot = try {
+                                    firestore.collection("messages")
+                                        .whereEqualTo("conversationId", doc.id)
+                                        .orderBy("timestamp", Query.Direction.DESCENDING)
+                                        .limit(1)
+                                        .get()
+                                        .await()
+                                } catch (e: FirebaseFirestoreException) {
+                                    if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                                        firestore.collection("messages")
+                                            .whereEqualTo("conversationId", doc.id)
+                                            .limit(50)
+                                            .get()
+                                            .await()
+                                    } else {
+                                        throw e
+                                    }
+                                }
+
                                 val lastMessage = lastMessageSnapshot.documents
                                     .mapNotNull { it.toObject(ChatMessage::class.java) }
-                                    .firstOrNull()
-                                
+                                    .maxByOrNull { it.timestamp }
+
                                 val otherUserId = participants.firstOrNull { it != userId }
                                 val otherUser = otherUserId?.let { getUser(it).getOrNull() }
                                 val item = getLostItem(itemId).getOrNull()
-                                
+
                                 ChatConversation(
                                     id = doc.id,
                                     itemId = itemId,
                                     participants = participants,
                                     lastMessage = lastMessage?.copy(
-                                        senderName = if (lastMessage.senderId == userId) "Me" 
-                                                     else (otherUser?.name ?: lastMessage.senderName)
+                                        senderName = if (lastMessage.senderId == userId) "Me"
+                                        else (otherUser?.name ?: lastMessage.senderName)
                                     ),
                                     updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis(),
                                     otherUserName = otherUser?.name ?: "User",
@@ -485,27 +506,45 @@ class FirebaseService {
                     trySend(conversations)
                 }
             }
-        awaitClose { listener.remove() }
+        }
+
+        attachListener(withOrderBy = true)
+        awaitClose { listener?.remove() }
     }
 
     fun listenToMessages(conversationId: String): Flow<List<ChatMessage>> = callbackFlow {
-        val listener = firestore.collection("messages")
-            .whereEqualTo("conversationId", conversationId)
-            .orderBy("timestamp", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
+        var listener: ListenerRegistration? = null
+
+        fun attachListener(withOrderBy: Boolean) {
+            var query: Query = firestore.collection("messages")
+                .whereEqualTo("conversationId", conversationId)
+            if (withOrderBy) {
+                query = query.orderBy("timestamp", Query.Direction.ASCENDING)
+            }
+
+            listener = query.addSnapshotListener { snapshot, error ->
                 if (error != null) {
+                    val firestoreError = error as? FirebaseFirestoreException
+                    if (withOrderBy && firestoreError?.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        listener?.remove()
+                        attachListener(withOrderBy = false)
+                        return@addSnapshotListener
+                    }
                     close(error)
                     return@addSnapshotListener
                 }
-                
+
                 if (snapshot != null) {
-                    val messages = snapshot.documents.mapNotNull { 
-                        it.toObject(ChatMessage::class.java) 
+                    val messages = snapshot.documents.mapNotNull {
+                        it.toObject(ChatMessage::class.java)
                     }.sortedBy { it.timestamp }
                     trySend(messages)
                 }
             }
-        awaitClose { listener.remove() }
+        }
+
+        attachListener(withOrderBy = true)
+        awaitClose { listener?.remove() }
     }
 
     fun listenToNewItems(): Flow<LostItem> = callbackFlow {

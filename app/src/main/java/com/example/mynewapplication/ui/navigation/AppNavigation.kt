@@ -37,8 +37,6 @@ fun AppNavigation(
     var selectedConversationId by remember { mutableStateOf<String?>(null) }
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
     var isLoadingConversation by remember { mutableStateOf(false) }
-    var homeRefreshTrigger by remember { mutableStateOf(0) }
-    var profileRefreshTrigger by remember { mutableStateOf(0) }
     var selectedEditItem by remember { mutableStateOf<LostItem?>(null) }
 
     fun openConversationForItem(item: LostItem, closeDetailsAfterOpen: Boolean) {
@@ -124,8 +122,6 @@ fun AppNavigation(
                             onSuccess = {
                                 Toast.makeText(context, "Item deleted successfully", Toast.LENGTH_SHORT).show()
                                 selectedItem = null
-                                homeRefreshTrigger++
-                                profileRefreshTrigger++
                             },
                             onFailure = { error ->
                                 Toast.makeText(context, "Failed to delete: ${error.message}", Toast.LENGTH_LONG).show()
@@ -178,8 +174,7 @@ fun AppNavigation(
                         onItemClick = { item -> selectedItem = item },
                         onContactClick = { item ->
                             openConversationForItem(item, closeDetailsAfterOpen = false)
-                        },
-                        refreshTrigger = homeRefreshTrigger
+                        }
                     )
                     is Screen.Add -> AddItemScreen(
                         itemToEdit = selectedEditItem,
@@ -188,8 +183,6 @@ fun AppNavigation(
                             currentScreen = Screen.Home 
                         },
                         onItemPosted = {
-                            homeRefreshTrigger++
-                            profileRefreshTrigger++
                             selectedEditItem = null
                             currentScreen = Screen.Home
                         }
@@ -201,16 +194,14 @@ fun AppNavigation(
                     )
                     is Screen.Profile -> ProfileScreen(
                         onLogout = onLogout,
-                        onItemClick = { item -> selectedItem = item },
-                        refreshTrigger = profileRefreshTrigger
+                        onItemClick = { item -> selectedItem = item }
                     )
                     else -> HomeScreen(
                         onAddClick = { currentScreen = Screen.Add },
                         onItemClick = { item -> selectedItem = item },
                         onContactClick = { item ->
                             openConversationForItem(item, closeDetailsAfterOpen = false)
-                        },
-                        refreshTrigger = homeRefreshTrigger
+                        }
                     )
                 }
             }

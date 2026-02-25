@@ -16,37 +16,18 @@ import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.screens.home.components.SearchTopBar
 import com.example.mynewapplication.ui.components.LoadingIndicator
 import com.example.mynewapplication.ui.components.EmptyState
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
-import androidx.compose.ui.Alignment
-import androidx.compose.material.ExperimentalMaterialApi
 
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     onAddClick: () -> Unit,
     onItemClick: (LostItem) -> Unit = {},
     onContactClick: (LostItem) -> Unit = {},
-    refreshTrigger: Int = 0,
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(refreshTrigger) {
-        if (refreshTrigger > 0) {
-            viewModel.refreshItems()
-        }
-    }
-
-    val pullRefreshState = rememberPullRefreshState(
-        refreshing = uiState.isLoading,
-        onRefresh = { viewModel.refreshItems() }
-    )
-
-    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SearchTopBar(
+    Column(modifier = Modifier.fillMaxSize()) {
+        SearchTopBar(
             searchQuery = uiState.searchQuery,
             onSearchChange = viewModel::onSearchQueryChange,
             onFilterClick = viewModel::toggleFilters
@@ -90,12 +71,5 @@ fun HomeScreen(
                 }
             }
         }
-        } // Close the Column here, before the PullRefreshIndicator!
-
-        PullRefreshIndicator(
-            refreshing = uiState.isLoading,
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
     }
 }
