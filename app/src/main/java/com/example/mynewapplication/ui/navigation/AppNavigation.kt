@@ -34,6 +34,7 @@ fun AppNavigation(
     var selectedConversationId by remember { mutableStateOf<String?>(null) }
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
     var isLoadingConversation by remember { mutableStateOf(false) }
+    var homeRefreshTrigger by remember { mutableStateOf(0) }
 
     fun openConversationForItem(item: LostItem, closeDetailsAfterOpen: Boolean) {
         val currentUser = firebaseService.getCurrentUser()
@@ -127,9 +128,16 @@ fun AppNavigation(
                         onItemClick = { item -> selectedItem = item },
                         onContactClick = { item ->
                             openConversationForItem(item, closeDetailsAfterOpen = false)
+                        },
+                        refreshTrigger = homeRefreshTrigger
+                    )
+                    is Screen.Add -> AddItemScreen(
+                        onBack = { currentScreen = Screen.Home },
+                        onItemPosted = {
+                            homeRefreshTrigger++
+                            currentScreen = Screen.Home
                         }
                     )
-                    is Screen.Add -> AddItemScreen(onBack = { currentScreen = Screen.Home })
                     is Screen.Messages -> MessagesScreen(
                         onConversationClick = { conversationId ->
                             selectedConversationId = conversationId
@@ -141,7 +149,8 @@ fun AppNavigation(
                         onItemClick = { item -> selectedItem = item },
                         onContactClick = { item ->
                             openConversationForItem(item, closeDetailsAfterOpen = false)
-                        }
+                        },
+                        refreshTrigger = homeRefreshTrigger
                     )
                 }
             }

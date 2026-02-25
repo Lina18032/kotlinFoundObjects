@@ -37,6 +37,7 @@ import com.example.mynewapplication.utils.Constants
 @Composable
 fun AddItemScreen(
     onBack: () -> Unit,
+    onItemPosted: () -> Unit,
     viewModel: AddItemViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -46,13 +47,6 @@ fun AddItemScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.onImageSelected(it) }
-    }
-
-    // Show success message
-    LaunchedEffect(uiState.isSuccess) {
-        if (uiState.isSuccess) {
-            onBack()
-        }
     }
 
     // Show error message
@@ -165,7 +159,11 @@ fun AddItemScreen(
             item {
                 PrimaryButton(
                     text = if (uiState.isLoading) "Posting..." else "Post Item",
-                    onClick = { viewModel.submitItem(onBack) },
+                    onClick = {
+                        viewModel.submitItem {
+                            onItemPosted()
+                        }
+                    },
                     enabled = uiState.isValid && !uiState.isLoading,
                     icon = Icons.Default.Send
                 )

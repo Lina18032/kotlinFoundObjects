@@ -195,20 +195,41 @@ class FirebaseService {
         limit: Int = 50
     ): Result<List<LostItem>> {
         return try {
-            var query: Query = firestore.collection("lostItems")
+            var orderedQuery: Query = firestore.collection("lostItems")
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .limit(limit.toLong())
 
             if (category != null) {
-                query = query.whereEqualTo("category", category)
+                orderedQuery = orderedQuery.whereEqualTo("category", category)
             }
 
             if (status != null) {
-                query = query.whereEqualTo("status", status)
+                orderedQuery = orderedQuery.whereEqualTo("status", status)
             }
 
-            val snapshot = query.get().await()
-            val items = snapshot.documents.mapNotNull { it.toObject(LostItem::class.java) }
+            val snapshot = try {
+                orderedQuery.get().await()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                    var fallbackQuery: Query = firestore.collection("lostItems")
+                        .limit(limit.toLong())
+
+                    if (category != null) {
+                        fallbackQuery = fallbackQuery.whereEqualTo("category", category)
+                    }
+                    if (status != null) {
+                        fallbackQuery = fallbackQuery.whereEqualTo("status", status)
+                    }
+
+                    fallbackQuery.get().await()
+                } else {
+                    throw e
+                }
+            }
+
+            val items = snapshot.documents
+                .mapNotNull { it.toObject(LostItem::class.java) }
+                .sortedByDescending { it.timestamp }
             Result.success(items)
         } catch (e: Exception) {
             Result.failure(e)
@@ -217,13 +238,26 @@ class FirebaseService {
 
     suspend fun getUserLostItems(userId: String): Result<List<LostItem>> {
         return try {
-            val snapshot = firestore.collection("lostItems")
-                .whereEqualTo("userId", userId)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .get()
-                .await()
+            val snapshot = try {
+                firestore.collection("lostItems")
+                    .whereEqualTo("userId", userId)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .get()
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                    firestore.collection("lostItems")
+                        .whereEqualTo("userId", userId)
+                        .get()
+                        .await()
+                } else {
+                    throw e
+                }
+            }
 
-            val items = snapshot.documents.mapNotNull { it.toObject(LostItem::class.java) }
+            val items = snapshot.documents
+                .mapNotNull { it.toObject(LostItem::class.java) }
+                .sortedByDescending { it.timestamp }
             Result.success(items)
         } catch (e: Exception) {
             Result.failure(e)

@@ -288,6 +288,11 @@ fun LguinahTextField(
                 disabledLabelColor = TextTertiary,
                 errorLabelColor = ErrorRed,
 
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                disabledTextColor = TextSecondary,
+                errorTextColor = Color.White,
+
                 cursorColor = PrimaryBlue,
                 errorCursorColor = ErrorRed
             ),

@@ -73,15 +73,12 @@ class ProfileViewModel : ViewModel() {
                     )
                 }
 
+                // Show user info immediately even if item loading fails
+                _uiState.value = _uiState.value.copy(user = user)
+
                 // Load user's items
                 val itemsResult = firebaseService.getUserLostItems(currentUser.uid)
-                val allItems = itemsResult.getOrElse {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = it.message ?: "Failed to load items"
-                    )
-                    return@launch
-                }
+                val allItems = itemsResult.getOrElse { emptyList() }
 
                 val lostItems = allItems.filter { it.status == ItemStatus.LOST }
                 val foundItems = allItems.filter { it.status == ItemStatus.FOUND }
@@ -90,7 +87,8 @@ class ProfileViewModel : ViewModel() {
                     user = user,
                     myLostItems = lostItems,
                     myFoundItems = foundItems,
-                    isLoading = false
+                    isLoading = false,
+                    error = itemsResult.exceptionOrNull()?.message
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

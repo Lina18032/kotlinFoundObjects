@@ -22,9 +22,16 @@ fun HomeScreen(
     onAddClick: () -> Unit,
     onItemClick: (LostItem) -> Unit = {},
     onContactClick: (LostItem) -> Unit = {},
+    refreshTrigger: Int = 0,
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) {
+            viewModel.refreshItems()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SearchTopBar(
@@ -45,6 +52,11 @@ fun HomeScreen(
 
         when {
             uiState.isLoading -> LoadingIndicator()
+            uiState.error != null && uiState.filteredItems.isEmpty() -> EmptyState(
+                icon = Icons.Default.Search,
+                title = "Couldn't load feed",
+                message = uiState.error ?: "Failed to load items"
+            )
             uiState.filteredItems.isEmpty() -> EmptyState(
                 icon = Icons.Default.Search,
                 title = "No items found",

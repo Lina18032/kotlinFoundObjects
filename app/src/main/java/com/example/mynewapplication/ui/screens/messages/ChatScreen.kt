@@ -53,12 +53,13 @@ fun ChatScreen(
                         Text(
                             text = uiState.otherUserName,
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                         Text(
                             text = uiState.itemTitle,
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = Color.White.copy(alpha = 0.75f)
                         )
                     }
                 },
