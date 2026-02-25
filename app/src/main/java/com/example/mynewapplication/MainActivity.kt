@@ -50,19 +50,24 @@ class MainActivity : ComponentActivity() {
                             CircularProgressIndicator()
                         }
                     } else {
-                        when {
-                            !isLoggedIn && showWelcome -> {
-                                WelcomeScreen(
-                                    onGetStarted = { showWelcome = false }
-                                )
-                            }
-                            !isLoggedIn -> {
-                                LoginScreen(
-                                    onLoginSuccess = { isLoggedIn = true }
-                                )
-                            }
+                    when {
+                        !isLoggedIn && showWelcome -> {
+                            WelcomeScreen(
+                                onGetStarted = { showWelcome = false }
+                            )
+                        }
+                        !isLoggedIn -> {
+                            LoginScreen(
+                                onLoginSuccess = { isLoggedIn = true }
+                            )
+                        }
                             else -> {
-                                AppNavigation()
+                                AppNavigation(
+                                    onLogout = {
+                                        isLoggedIn = false
+                                        showWelcome = true
+                                    }
+                                )
                             }
                         }
                     }

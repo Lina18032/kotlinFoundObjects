@@ -25,7 +25,9 @@ import com.example.mynewapplication.ui.theme.PrimaryBlue
 import kotlinx.coroutines.launch
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    onLogout: () -> Unit
+) {
     val firebaseService = remember { FirebaseService() }
     val coroutineScope = rememberCoroutineScope()
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -33,39 +35,45 @@ fun AppNavigation() {
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
     var isLoadingConversation by remember { mutableStateOf(false) }
 
+    fun openConversationForItem(item: LostItem, closeDetailsAfterOpen: Boolean) {
+        val currentUser = firebaseService.getCurrentUser()
+        if (currentUser != null && item.userId != currentUser.uid) {
+            isLoadingConversation = true
+            coroutineScope.launch {
+                val result = firebaseService.getOrCreateConversation(
+                    item.id,
+                    item.userId
+                )
+                result.fold(
+                    onSuccess = { conversationId ->
+                        selectedConversationId = conversationId
+                        if (closeDetailsAfterOpen) {
+                            selectedItem = null
+                            currentScreen = Screen.Messages
+                        }
+                        isLoadingConversation = false
+                    },
+                    onFailure = {
+                        isLoadingConversation = false
+                        // Handle error - could show snackbar
+                    }
+                )
+            }
+        } else if (closeDetailsAfterOpen) {
+            selectedItem = null
+            currentScreen = Screen.Messages
+        } else {
+            currentScreen = Screen.Messages
+        }
+    }
+
     // Show item detail screen
     if (selectedItem != null) {
         ItemDetailScreen(
             item = selectedItem!!,
             onBack = { selectedItem = null },
             onContactClick = {
-                val item = selectedItem!!
-                val currentUser = firebaseService.getCurrentUser()
-                
-                if (currentUser != null && item.userId != currentUser.uid) {
-                    isLoadingConversation = true
-                    coroutineScope.launch {
-                        val result = firebaseService.getOrCreateConversation(
-                            item.id,
-                            item.userId
-                        )
-                        result.fold(
-                            onSuccess = { conversationId ->
-                                selectedConversationId = conversationId
-                                selectedItem = null
-                                currentScreen = Screen.Messages
-                                isLoadingConversation = false
-                            },
-                            onFailure = {
-                                isLoadingConversation = false
-                                // Handle error - could show snackbar
-                            }
-                        )
-                    }
-                } else {
-                    selectedItem = null
-                    currentScreen = Screen.Messages
-                }
+                openConversationForItem(selectedItem!!, closeDetailsAfterOpen = true)
             }
         )
     }
@@ -116,7 +124,10 @@ fun AppNavigation() {
                 when (currentScreen) {
                     is Screen.Home -> HomeScreen(
                         onAddClick = { currentScreen = Screen.Add },
-                        onItemClick = { item -> selectedItem = item }
+                        onItemClick = { item -> selectedItem = item },
+                        onContactClick = { item ->
+                            openConversationForItem(item, closeDetailsAfterOpen = false)
+                        }
                     )
                     is Screen.Add -> AddItemScreen(onBack = { currentScreen = Screen.Home })
                     is Screen.Messages -> MessagesScreen(
@@ -124,10 +135,13 @@ fun AppNavigation() {
                             selectedConversationId = conversationId
                         }
                     )
-                    is Screen.Profile -> ProfileScreen()
+                    is Screen.Profile -> ProfileScreen(onLogout = onLogout)
                     else -> HomeScreen(
                         onAddClick = { currentScreen = Screen.Add },
-                        onItemClick = { item -> selectedItem = item }
+                        onItemClick = { item -> selectedItem = item },
+                        onContactClick = { item ->
+                            openConversationForItem(item, closeDetailsAfterOpen = false)
+                        }
                     )
                 }
             }

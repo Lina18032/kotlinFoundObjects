@@ -6,8 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.ui.components.LguinahTextField
 import com.example.mynewapplication.ui.components.PrimaryButton
@@ -46,6 +50,18 @@ fun LoginScreen(
     val context = LocalContext.current
     val firebaseService = remember { FirebaseService() }
 
+    // Check for last signed-in account
+    var lastSignedInAccount by remember { mutableStateOf<GoogleSignInAccount?>(null) }
+    
+    LaunchedEffect(Unit) {
+        try {
+            val account = GoogleSignIn.getLastSignedInAccount(context)
+            lastSignedInAccount = account
+        } catch (e: Exception) {
+            // No previous account
+        }
+    }
+
     // Google Sign-In launcher
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -53,6 +69,7 @@ fun LoginScreen(
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.result
+            lastSignedInAccount = account
             viewModel.handleGoogleSignInResult(account, onLoginSuccess)
         } catch (e: Exception) {
             viewModel.handleGoogleSignInResult(null, onLoginSuccess)
@@ -138,6 +155,73 @@ fun LoginScreen(
             )
 
             Spacer(Modifier.height(48.dp))
+
+            // Show last signed-in account if available
+            lastSignedInAccount?.let { account ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                        .clickable { launchGoogleSignIn() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = DarkCard
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Account avatar or icon
+                        if (account.photoUrl != null) {
+                            AsyncImage(
+                                model = account.photoUrl,
+                                contentDescription = "Account avatar",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(PrimaryBlue, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = account.displayName?.firstOrNull()?.toString() ?: "?",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = account.displayName ?: "Google Account",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = account.email ?: "",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                        
+                        Text(
+                            text = "Tap to continue",
+                            fontSize = 12.sp,
+                            color = PrimaryBlue,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
 
             // Google Sign In Button
             GoogleSignInButton(

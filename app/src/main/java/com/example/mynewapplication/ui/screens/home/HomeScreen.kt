@@ -21,6 +21,7 @@ import com.example.mynewapplication.ui.components.EmptyState
 fun HomeScreen(
     onAddClick: () -> Unit,
     onItemClick: (LostItem) -> Unit = {},
+    onContactClick: (LostItem) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -58,7 +59,8 @@ fun HomeScreen(
                     items(uiState.filteredItems) { item ->
                         ItemCard(
                             item = item,
-                            onClick = { onItemClick(item) }
+                            onClick = { onItemClick(item) },
+                            onContactClick = { onContactClick(item) }
                         )
                     }
                 }

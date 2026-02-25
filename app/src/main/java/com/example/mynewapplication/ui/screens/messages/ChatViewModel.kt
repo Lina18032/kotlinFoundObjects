@@ -98,10 +98,10 @@ class ChatViewModel : ViewModel() {
                     }
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
                     error = e.message ?: "Failed to load messages"
-                )
+            )
             }
         }
     }
@@ -138,20 +138,20 @@ class ChatViewModel : ViewModel() {
 
                 result.fold(
                     onSuccess = { messageId ->
-                        val newMessage = ChatMessage(
+                val newMessage = ChatMessage(
                             id = messageId,
                             conversationId = currentConversationId!!,
                             senderId = currentUser.uid,
-                            senderName = "Me",
-                            text = text,
-                            timestamp = System.currentTimeMillis(),
-                            isRead = false
-                        )
+                    senderName = "Me",
+                    text = text,
+                    timestamp = System.currentTimeMillis(),
+                    isRead = false
+                )
 
-                        _uiState.value = _uiState.value.copy(
-                            messages = _uiState.value.messages + newMessage,
-                            messageText = "",
-                            isSending = false
+                _uiState.value = _uiState.value.copy(
+                    messages = _uiState.value.messages + newMessage,
+                    messageText = "",
+                    isSending = false
                         )
                     },
                     onFailure = { error ->

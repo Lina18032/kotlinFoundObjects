@@ -25,7 +25,8 @@ import com.example.mynewapplication.ui.theme.*
 @Composable
 fun ItemCard(
     item: LostItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onContactClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -110,7 +111,7 @@ fun ItemCard(
 
             // Contact Button
             Button(
-                onClick = { /* TODO: Open chat */ },
+                onClick = onContactClick,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryBlue

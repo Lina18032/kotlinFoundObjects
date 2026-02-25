@@ -46,14 +46,31 @@ class ProfileViewModel : ViewModel() {
                     return@launch
                 }
 
-                // Load user data
+                // Load user data from Firestore, but fall back to Firebase Auth if missing
                 val userResult = firebaseService.getCurrentUserData()
-                val user = userResult.getOrElse {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = it.message ?: "Failed to load user data"
+                val userFromDb = userResult.getOrNull()
+
+                val user: User = if (userFromDb != null) {
+                    // If Firestore user has no name/email, fill from Firebase Auth
+                    userFromDb.copy(
+                        name = if (userFromDb.name.isNotBlank()) {
+                            userFromDb.name
+                        } else {
+                            currentUser.displayName ?: userFromDb.email.substringBefore("@")
+                        },
+                        email = if (userFromDb.email.isNotBlank()) {
+                            userFromDb.email
+                        } else {
+                            currentUser.email ?: ""
+                        }
                     )
-                    return@launch
+                } else {
+                    // Fallback: build user from Firebase Auth
+                    User(
+                        id = currentUser.uid,
+                        name = currentUser.displayName ?: (currentUser.email?.substringBefore("@") ?: ""),
+                        email = currentUser.email ?: ""
+                    )
                 }
 
                 // Load user's items

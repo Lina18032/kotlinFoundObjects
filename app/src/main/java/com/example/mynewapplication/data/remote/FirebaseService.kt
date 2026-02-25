@@ -13,6 +13,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 
@@ -318,11 +319,22 @@ class FirebaseService {
      */
     suspend fun getUserConversations(userId: String): Result<List<ChatConversation>> {
         return try {
-            val snapshot = firestore.collection("conversations")
-                .whereArrayContains("participants", userId)
-                .orderBy("updatedAt", Query.Direction.DESCENDING)
-                .get()
-                .await()
+            val snapshot = try {
+                firestore.collection("conversations")
+                    .whereArrayContains("participants", userId)
+                    .orderBy("updatedAt", Query.Direction.DESCENDING)
+                    .get()
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                    firestore.collection("conversations")
+                        .whereArrayContains("participants", userId)
+                        .get()
+                        .await()
+                } else {
+                    throw e
+                }
+            }
 
             val conversations = mutableListOf<ChatConversation>()
             
@@ -330,19 +342,29 @@ class FirebaseService {
                 val itemId = doc.getString("itemId") ?: continue
                 val participants = (doc.get("participants") as? List<*>)?.mapNotNull { it as? String } ?: continue
                 
-                // Get item details
-                val itemResult = getLostItem(itemId)
-                val item = itemResult.getOrNull()
-                
                 // Get last message
-                val lastMessageSnapshot = firestore.collection("messages")
-                    .whereEqualTo("conversationId", doc.id)
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                    .limit(1)
-                    .get()
-                    .await()
+                val lastMessageSnapshot = try {
+                    firestore.collection("messages")
+                        .whereEqualTo("conversationId", doc.id)
+                        .orderBy("timestamp", Query.Direction.DESCENDING)
+                        .limit(1)
+                        .get()
+                        .await()
+                } catch (e: FirebaseFirestoreException) {
+                    if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        firestore.collection("messages")
+                            .whereEqualTo("conversationId", doc.id)
+                            .limit(50)
+                            .get()
+                            .await()
+                    } else {
+                        throw e
+                    }
+                }
                 
-                val lastMessage = lastMessageSnapshot.documents.firstOrNull()?.toObject(ChatMessage::class.java)
+                val lastMessage = lastMessageSnapshot.documents
+                    .mapNotNull { it.toObject(ChatMessage::class.java) }
+                    .maxByOrNull { it.timestamp }
                 
                 // Get other participant info
                 val otherUserId = participants.firstOrNull { it != userId }
@@ -362,7 +384,7 @@ class FirebaseService {
                 )
             }
             
-            Result.success(conversations)
+            Result.success(conversations.sortedByDescending { it.updatedAt })
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -373,13 +395,26 @@ class FirebaseService {
      */
     suspend fun getConversationMessages(conversationId: String): Result<List<ChatMessage>> {
         return try {
-            val snapshot = firestore.collection("messages")
-                .whereEqualTo("conversationId", conversationId)
-                .orderBy("timestamp", Query.Direction.ASCENDING)
-                .get()
-                .await()
+            val snapshot = try {
+                firestore.collection("messages")
+                    .whereEqualTo("conversationId", conversationId)
+                    .orderBy("timestamp", Query.Direction.ASCENDING)
+                    .get()
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                    firestore.collection("messages")
+                        .whereEqualTo("conversationId", conversationId)
+                        .get()
+                        .await()
+                } else {
+                    throw e
+                }
+            }
 
-            val messages = snapshot.documents.mapNotNull { it.toObject(ChatMessage::class.java) }
+            val messages = snapshot.documents
+                .mapNotNull { it.toObject(ChatMessage::class.java) }
+                .sortedBy { it.timestamp }
             Result.success(messages)
         } catch (e: Exception) {
             Result.failure(e)
@@ -468,4 +503,3 @@ class FirebaseService {
         }
     }
 }
-

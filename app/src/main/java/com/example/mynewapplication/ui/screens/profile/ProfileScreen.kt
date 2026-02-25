@@ -30,6 +30,7 @@ import com.example.mynewapplication.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
+    onLogout: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -42,7 +43,11 @@ fun ProfileScreen(
             ProfileHeader(
                 user = uiState.user,
                 onEditClick = viewModel::showEditDialog,
-                onLogoutClick = { viewModel.logout {} }
+                onLogoutClick = {
+                    viewModel.logout {
+                        onLogout()
+                    }
+                }
             )
 
             // Tabs
@@ -145,9 +150,14 @@ fun ProfileHeader(
 
             Spacer(Modifier.height(16.dp))
 
-            // Name
+            // Name - fallback to email username if name is empty
+            val displayName = when {
+                user?.name?.isNotBlank() == true -> user.name
+                user?.email?.isNotBlank() == true -> user.email.substringBefore("@")
+                else -> "User"
+            }
             Text(
-                text = user?.name ?: "User",
+                text = displayName,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White

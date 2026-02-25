@@ -198,13 +198,13 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
                 val saveResult = firebaseService.saveLostItem(newItem)
                 saveResult.fold(
                     onSuccess = { itemId ->
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            isSuccess = true
-                        )
-                        // Reset form and navigate back
-                        resetForm()
-                        onSuccess()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isSuccess = true
+                )
+                // Reset form and navigate back
+                resetForm()
+                onSuccess()
                     },
                     onFailure = { error ->
                         _uiState.value = _uiState.value.copy(

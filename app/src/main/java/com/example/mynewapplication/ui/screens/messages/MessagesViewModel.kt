@@ -56,10 +56,10 @@ class MessagesViewModel : ViewModel() {
                     }
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
+            _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Failed to load conversations"
-                )
+            )
             }
         }
     }
