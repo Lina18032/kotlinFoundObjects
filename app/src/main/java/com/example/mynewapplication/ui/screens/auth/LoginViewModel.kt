@@ -1,12 +1,15 @@
 package com.example.mynewapplication.ui.screens.auth
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mynewapplication.data.remote.FirebaseService
+import com.example.mynewapplication.utils.Constants
 import com.example.mynewapplication.utils.ValidationUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.example.mynewapplication.data.model.User
 import kotlinx.coroutines.launch
 
 data class LoginUiState(
@@ -55,10 +58,10 @@ class LoginViewModel : ViewModel() {
             return
         }
 
-        // Check if email ends with @estin.dz
-        if (!_uiState.value.email.endsWith("@estin.dz")) {
+        // Check if email ends with Constants.EMAIL_DOMAIN
+        if (!_uiState.value.email.endsWith(Constants.EMAIL_DOMAIN)) {
             _uiState.value = _uiState.value.copy(
-                emailError = "Only @estin.dz emails are allowed"
+                emailError = "Only ${Constants.EMAIL_DOMAIN} emails are allowed"
             )
             return
         }
@@ -73,12 +76,37 @@ class LoginViewModel : ViewModel() {
                 )
 
                 result.fold(
-                    onSuccess = {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            isLoggedIn = true
-                        )
-                        onSuccess()
+                    onSuccess = { firebaseUser ->
+                        viewModelScope.launch {
+                            val userResult = firebaseService.getUser(firebaseUser.uid)
+                            var userData = userResult.getOrNull()
+                            
+                            // If user document doesn't exist (e.g. created in Firebase Console), create it
+                            if (userData == null) {
+                                val newUser = User(
+                                    id = firebaseUser.uid,
+                                    email = firebaseUser.email ?: "",
+                                    name = firebaseUser.displayName ?: firebaseUser.email?.substringBefore("@") ?: "User",
+                                    createdAt = System.currentTimeMillis()
+                                )
+                                firebaseService.saveUser(newUser)
+                                userData = newUser
+                            }
+                            
+                            if (userData.isBlocked) {
+                                firebaseService.signOut()
+                                _uiState.value = _uiState.value.copy(
+                                    isLoading = false,
+                                    errorMessage = "Your account has been blocked by an administrator."
+                                )
+                            } else {
+                                _uiState.value = _uiState.value.copy(
+                                    isLoading = false,
+                                    isLoggedIn = true
+                                )
+                                onSuccess()
+                            }
+                        }
                     },
                     onFailure = { error ->
                         val errorMessage = when {
@@ -110,7 +138,11 @@ class LoginViewModel : ViewModel() {
      * Handle Google Sign-In result
      * This is called after Google Sign-In activity returns
      */
-    fun handleGoogleSignInResult(account: com.google.android.gms.auth.api.signin.GoogleSignInAccount?, onSuccess: () -> Unit) {
+    fun handleGoogleSignInResult(
+        account: com.google.android.gms.auth.api.signin.GoogleSignInAccount?, 
+        context: Context,
+        onSuccess: () -> Unit
+    ) {
         if (account == null) {
             _uiState.value = _uiState.value.copy(
                 isGoogleSignInLoading = false,
@@ -126,11 +158,14 @@ class LoginViewModel : ViewModel() {
             )
 
             try {
-                // Check if email ends with @estin.dz
-                if (account.email?.endsWith("@estin.dz") != true) {
+                // Check if email ends with Constants.EMAIL_DOMAIN
+                if (account.email?.endsWith(Constants.EMAIL_DOMAIN) != true) {
+                    // Sign out from Google to allow user to try again with another account
+                    firebaseService.signOut(context)
+                    
                     _uiState.value = _uiState.value.copy(
                         isGoogleSignInLoading = false,
-                        errorMessage = "Only @estin.dz emails are allowed"
+                        errorMessage = "Only ${Constants.EMAIL_DOMAIN} emails are allowed"
                     )
                     return@launch
                 }
@@ -138,14 +173,29 @@ class LoginViewModel : ViewModel() {
                 val result = firebaseService.signInWithGoogle(account)
 
                 result.fold(
-                    onSuccess = {
-                        _uiState.value = _uiState.value.copy(
-                            isGoogleSignInLoading = false,
-                            isLoggedIn = true
-                        )
-                        onSuccess()
+                    onSuccess = { firebaseUser ->
+                        viewModelScope.launch {
+                            val userResult = firebaseService.getUser(firebaseUser.uid)
+                            val userData = userResult.getOrNull()
+
+                            if (userData?.isBlocked == true) {
+                                firebaseService.signOut(context)
+                                _uiState.value = _uiState.value.copy(
+                                    isGoogleSignInLoading = false,
+                                    errorMessage = "Your account has been blocked by an administrator."
+                                )
+                            } else {
+                                _uiState.value = _uiState.value.copy(
+                                    isGoogleSignInLoading = false,
+                                    isLoggedIn = true
+                                )
+                                onSuccess()
+                            }
+                        }
                     },
                     onFailure = { error ->
+                        // Also sign out on failure to be safe
+                        firebaseService.signOut(context)
                         _uiState.value = _uiState.value.copy(
                             isGoogleSignInLoading = false,
                             errorMessage = error.message ?: "Google Sign-In failed. Please try again."
@@ -153,6 +203,8 @@ class LoginViewModel : ViewModel() {
                     }
                 )
             } catch (e: Exception) {
+                // Also sign out on exception
+                firebaseService.signOut(context)
                 _uiState.value = _uiState.value.copy(
                     isGoogleSignInLoading = false,
                     errorMessage = e.message ?: "Google Sign-In failed. Please try again."

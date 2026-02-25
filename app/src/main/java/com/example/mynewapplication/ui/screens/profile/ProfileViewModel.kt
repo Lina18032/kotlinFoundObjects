@@ -10,6 +10,7 @@ import com.example.mynewapplication.data.remote.FirebaseService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 data class ProfileUiState(
@@ -19,7 +20,11 @@ data class ProfileUiState(
     val selectedTab: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val showEditDialog: Boolean = false
+    val showEditDialog: Boolean = false,
+    val showPasswordDialog: Boolean = false,
+    val passwordSuccess: String? = null,
+    val passwordError: String? = null,
+    val hasPasswordProvider: Boolean = true
 )
 
 class ProfileViewModel : ViewModel() {
@@ -27,45 +32,39 @@ class ProfileViewModel : ViewModel() {
     private val firebaseService = FirebaseService()
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+    private var itemsJob: kotlinx.coroutines.Job? = null
 
     init {
         loadProfile()
     }
 
+    private var profileJob: kotlinx.coroutines.Job? = null
+
     private fun loadProfile() {
-        viewModelScope.launch {
+        profileJob?.cancel()
+        profileJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            try {
-                val currentUser = firebaseService.getCurrentUser()
-                if (currentUser == null) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Not logged in"
-                    )
-                    return@launch
-                }
+            val currentUser = firebaseService.getCurrentUser()
+            if (currentUser == null) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Not logged in"
+                )
+                return@launch
+            }
 
-                // Load user data from Firestore, but fall back to Firebase Auth if missing
-                val userResult = firebaseService.getCurrentUserData()
-                val userFromDb = userResult.getOrNull()
+            // Start real-time listener for items
+            startItemsListener(currentUser.uid)
 
+            // Start real-time listener for user data
+            firebaseService.listenToUser(currentUser.uid).collect { userFromDb ->
                 val user: User = if (userFromDb != null) {
-                    // If Firestore user has no name/email, fill from Firebase Auth
                     userFromDb.copy(
-                        name = if (userFromDb.name.isNotBlank()) {
-                            userFromDb.name
-                        } else {
-                            currentUser.displayName ?: userFromDb.email.substringBefore("@")
-                        },
-                        email = if (userFromDb.email.isNotBlank()) {
-                            userFromDb.email
-                        } else {
-                            currentUser.email ?: ""
-                        }
+                        name = if (userFromDb.name.isNotBlank()) userFromDb.name else currentUser.displayName ?: userFromDb.email.substringBefore("@"),
+                        email = if (userFromDb.email.isNotBlank()) userFromDb.email else currentUser.email ?: ""
                     )
                 } else {
-                    // Fallback: build user from Firebase Auth
                     User(
                         id = currentUser.uid,
                         name = currentUser.displayName ?: (currentUser.email?.substringBefore("@") ?: ""),
@@ -73,27 +72,26 @@ class ProfileViewModel : ViewModel() {
                     )
                 }
 
-                // Show user info immediately even if item loading fails
-                _uiState.value = _uiState.value.copy(user = user)
+                _uiState.value = _uiState.value.copy(
+                    user = user,
+                    hasPasswordProvider = firebaseService.hasPasswordProvider(),
+                    isLoading = false
+                )
+            }
+        }
+    }
 
-                // Load user's items
-                val itemsResult = firebaseService.getUserLostItems(currentUser.uid)
-                val allItems = itemsResult.getOrElse { emptyList() }
-
+    private fun startItemsListener(userId: String) {
+        itemsJob?.cancel()
+        itemsJob = viewModelScope.launch {
+            firebaseService.listenToUserLostItems(userId).collect { allItems ->
                 val lostItems = allItems.filter { it.status == ItemStatus.LOST }
                 val foundItems = allItems.filter { it.status == ItemStatus.FOUND }
 
                 _uiState.value = _uiState.value.copy(
-                    user = user,
                     myLostItems = lostItems,
                     myFoundItems = foundItems,
-                    isLoading = false,
-                    error = itemsResult.exceptionOrNull()?.message
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load profile"
+                    isLoading = false
                 )
             }
         }
@@ -109,6 +107,23 @@ class ProfileViewModel : ViewModel() {
 
     fun hideEditDialog() {
         _uiState.value = _uiState.value.copy(showEditDialog = false)
+    }
+
+    fun showPasswordDialog() {
+        _uiState.value = _uiState.value.copy(
+            showPasswordDialog = true, 
+            passwordSuccess = null, 
+            passwordError = null,
+            hasPasswordProvider = firebaseService.hasPasswordProvider()
+        )
+    }
+
+    fun hidePasswordDialog() {
+        _uiState.value = _uiState.value.copy(showPasswordDialog = false)
+    }
+
+    fun clearPasswordMessages() {
+        _uiState.value = _uiState.value.copy(passwordSuccess = null, passwordError = null)
     }
 
     fun updateProfile(name: String, phoneNumber: String) {
@@ -198,5 +213,40 @@ class ProfileViewModel : ViewModel() {
 
     fun refreshProfile() {
         loadProfile()
+    }
+
+    fun changePassword(currentPassword: String?, newPassword: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, passwordError = null, passwordSuccess = null)
+
+            try {
+                val result = firebaseService.updatePassword(currentPassword, newPassword)
+                result.fold(
+                    onSuccess = {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            showPasswordDialog = false,
+                            passwordSuccess = "Password updated successfully!",
+                            hasPasswordProvider = true
+                        )
+                    },
+                    onFailure = { error ->
+                        val errorMessage = when {
+                            error.message?.contains("password") == true -> "Incorrect current password"
+                            else -> error.message ?: "Failed to update password"
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            passwordError = errorMessage
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    passwordError = e.message ?: "Failed to update password"
+                )
+            }
+        }
     }
 }

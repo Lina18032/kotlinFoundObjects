@@ -6,6 +6,8 @@ data class User(
     val email: String = "",
     val profileImageUrl: String? = null,
     val phoneNumber: String? = null,
+    val role: String = "USER", // "USER" or "ADMIN"
+    val isBlocked: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     @com.google.firebase.firestore.Exclude

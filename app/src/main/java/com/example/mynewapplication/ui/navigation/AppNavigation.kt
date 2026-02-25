@@ -24,6 +24,7 @@ import com.example.mynewapplication.ui.screens.messages.ChatScreen
 import com.example.mynewapplication.ui.screens.matching.MatchResultsScreen
 import com.example.mynewapplication.ui.screens.profile.ProfileScreen
 import com.example.mynewapplication.ui.screens.detail.ItemDetailScreen
+import com.example.mynewapplication.ui.screens.admin.AdminScreen
 import com.example.mynewapplication.ui.theme.DarkBackground
 import com.example.mynewapplication.ui.theme.PrimaryBlue
 import kotlinx.coroutines.launch
@@ -201,6 +202,11 @@ fun AppNavigation(
                     )
                     is Screen.Profile -> ProfileScreen(
                         onLogout = onLogout,
+                        onItemClick = { item -> selectedItem = item },
+                        onAdminClick = { currentScreen = Screen.Admin }
+                    )
+                    is Screen.Admin -> AdminScreen(
+                        onBackClick = { currentScreen = Screen.Profile },
                         onItemClick = { item -> selectedItem = item }
                     )
                     is Screen.MatchResults -> MatchResultsScreen(

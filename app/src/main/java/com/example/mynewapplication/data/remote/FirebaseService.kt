@@ -166,6 +166,23 @@ class FirebaseService {
         }
     }
 
+    fun listenToUser(userId: String): Flow<User?> = callbackFlow {
+        val listener = firestore.collection("users")
+            .document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    trySend(snapshot.toObject(User::class.java))
+                } else {
+                    trySend(null)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
     // LostItem Functions
     suspend fun saveLostItem(item: LostItem): Result<String> {
         return try {
@@ -272,6 +289,47 @@ class FirebaseService {
             Result.failure(e)
         }
     }
+
+    fun listenToUserLostItems(userId: String): Flow<List<LostItem>> = callbackFlow {
+        var listener: ListenerRegistration? = null
+
+        fun attachListener(withOrderBy: Boolean) {
+            var query: Query = firestore.collection("lostItems")
+                .whereEqualTo("userId", userId)
+            
+            if (withOrderBy) {
+                query = query.orderBy("timestamp", Query.Direction.DESCENDING)
+            }
+
+            listener = query.addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    val firestoreError = error as? FirebaseFirestoreException
+                    if (withOrderBy && firestoreError?.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
+                        listener?.remove()
+                        attachListener(withOrderBy = false)
+                        return@addSnapshotListener
+                    }
+                    close(error)
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null) {
+                    val items = snapshot.documents
+                        .mapNotNull { it.toObject(LostItem::class.java) }
+                    
+                    if (!withOrderBy) {
+                        trySend(items.sortedByDescending { it.timestamp })
+                    } else {
+                        trySend(items)
+                    }
+                }
+            }
+        }
+
+        attachListener(withOrderBy = true)
+        awaitClose { listener?.remove() }
+    }
+
 
     suspend fun updateLostItem(item: LostItem): Result<Unit> {
         return try {
@@ -668,6 +726,134 @@ class FirebaseService {
                 .document(userId)
                 .update(updates)
                 .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun hasPasswordProvider(): Boolean {
+        return auth.currentUser?.providerData?.any { it.providerId == com.google.firebase.auth.EmailAuthProvider.PROVIDER_ID } == true
+    }
+
+    /**
+     * Update user password or link email/password for the first time
+     */
+    suspend fun updatePassword(currentPassword: String?, newPassword: String): Result<Unit> {
+        return try {
+            val user = auth.currentUser ?: return Result.failure(Exception("User not logged in"))
+            val email = user.email ?: return Result.failure(Exception("User email not found"))
+            
+            if (hasPasswordProvider()) {
+                if (currentPassword == null) return Result.failure(Exception("Current password required"))
+                val credential = com.google.firebase.auth.EmailAuthProvider.getCredential(email, currentPassword)
+                // Re-authenticate user before updating password
+                user.reauthenticate(credential).await()
+                user.updatePassword(newPassword).await()
+            } else {
+                // First time setting password: link email/password credential
+                val credential = com.google.firebase.auth.EmailAuthProvider.getCredential(email, newPassword)
+                user.linkWithCredential(credential).await()
+            }
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Admin Functions
+    fun getAllItems(): Flow<List<LostItem>> = callbackFlow {
+        val listener = firestore.collection("lostItems")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val items = snapshot.documents.mapNotNull { it.toObject(LostItem::class.java) }
+                    trySend(items)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun getAllUsers(): Flow<List<User>> = callbackFlow {
+        val listener = firestore.collection("users")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val users = snapshot.documents.mapNotNull { it.toObject(User::class.java) }
+                    trySend(users)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun blockUser(userId: String, isBlocked: Boolean): Result<Unit> {
+        return try {
+            firestore.collection("users").document(userId).update("isBlocked", isBlocked).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteItem(itemId: String): Result<Unit> {
+        return try {
+            firestore.collection("lostItems").document(itemId).delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getAllConversations(): Flow<List<ChatConversation>> = callbackFlow {
+        val listener = firestore.collection("conversations")
+            .orderBy("updatedAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    // For performance, we don't fetch all details for every conversation in a listener
+                    // but we can map basic data
+                    val conversations = snapshot.documents.mapNotNull { doc ->
+                        val participants = (doc.get("participants") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                        ChatConversation(
+                            id = doc.id,
+                            itemId = doc.getString("itemId") ?: "",
+                            participants = participants,
+                            updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+                        )
+                    }
+                    trySend(conversations)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun deleteConversation(conversationId: String): Result<Unit> {
+        return try {
+            // Delete all messages in the conversation first
+            val messages = firestore.collection("messages")
+                .whereEqualTo("conversationId", conversationId)
+                .get()
+                .await()
+            
+            val batch = firestore.batch()
+            for (doc in messages.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.delete(firestore.collection("conversations").document(conversationId))
+            batch.commit().await()
+            
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

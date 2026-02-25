@@ -31,12 +31,14 @@ import com.example.mynewapplication.ui.components.LoadingIndicator
 import com.example.mynewapplication.ui.components.UserAvatar
 import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.theme.*
+import com.example.mynewapplication.utils.Constants
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit,
     onItemClick: (LostItem) -> Unit,
+    onAdminClick: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -45,6 +47,22 @@ fun ProfileScreen(
         refreshing = uiState.isLoading,
         onRefresh = { viewModel.refreshProfile() }
     )
+
+    // Show toast on password success
+    LaunchedEffect(uiState.passwordSuccess) {
+        uiState.passwordSuccess?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearPasswordMessages()
+        }
+    }
+
+    // Show toast on password error
+    LaunchedEffect(uiState.passwordError) {
+        uiState.passwordError?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearPasswordMessages()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -59,6 +77,8 @@ fun ProfileScreen(
                 ProfileHeader(
                     user = uiState.user,
                     onEditClick = viewModel::showEditDialog,
+                    onChangePasswordClick = viewModel::showPasswordDialog,
+                    onAdminClick = onAdminClick,
                     onLogoutClick = {
                         viewModel.logout(context) {
                             onLogout()
@@ -137,12 +157,29 @@ fun ProfileScreen(
             }
         )
     }
+
+    // Change Password Dialog
+    if (uiState.showPasswordDialog) {
+        ChangePasswordDialog(
+            onDismiss = viewModel::hidePasswordDialog,
+            onSave = { current, new ->
+                viewModel.changePassword(
+                    if (uiState.hasPasswordProvider) current else null, 
+                    new
+                )
+            },
+            isLoading = uiState.isLoading,
+            hasPasswordProvider = uiState.hasPasswordProvider
+        )
+    }
 }
 
 @Composable
 fun ProfileHeader(
     user: com.example.mynewapplication.data.model.User?,
     onEditClick: () -> Unit,
+    onChangePasswordClick: () -> Unit,
+    onAdminClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     Surface(
@@ -252,6 +289,37 @@ fun ProfileHeader(
                     Spacer(Modifier.width(8.dp))
                     Text("Logout")
                 }
+            }
+            
+            Spacer(Modifier.height(12.dp))
+
+            if (user?.role?.uppercase() == "ADMIN") {
+                Button(
+                    onClick = onAdminClick,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Settings, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Admin Panel")
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            TextButton(
+                onClick = onChangePasswordClick,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = PrimaryBlue
+                )
+            ) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Change Password")
             }
         }
     }
@@ -426,6 +494,118 @@ fun EditProfileDialog(
                 enabled = name.isNotBlank()
             ) {
                 Text("Save", color = PrimaryBlue)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        },
+        containerColor = DarkCard
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChangePasswordDialog(
+    onDismiss: () -> Unit,
+    onSave: (String?, String) -> Unit,
+    isLoading: Boolean,
+    hasPasswordProvider: Boolean
+) {
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var currentVisible by remember { mutableStateOf(false) }
+    var newVisible by remember { mutableStateOf(false) }
+    var confirmVisible by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Change Password", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (hasPasswordProvider) {
+                    OutlinedTextField(
+                        value = currentPassword,
+                        onValueChange = { currentPassword = it },
+                        label = { Text("Current Password") },
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (currentVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { currentVisible = !currentVisible }) {
+                                Icon(if (currentVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
+                            }
+                        },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = PrimaryBlue,
+                            containerColor = DarkCard
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    label = { Text("New Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (newVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { newVisible = !newVisible }) {
+                            Icon(if (newVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
+                        }
+                    },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = PrimaryBlue,
+                        containerColor = DarkCard
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    isError = newPassword.isNotEmpty() && newPassword.length < Constants.MIN_PASSWORD_LENGTH,
+                    supportingText = {
+                        val color = if (newPassword.isNotEmpty() && newPassword.length < Constants.MIN_PASSWORD_LENGTH) ErrorRed else TextSecondary
+                        Text(
+                            text = "Must be at least ${Constants.MIN_PASSWORD_LENGTH} characters",
+                            color = color,
+                            fontSize = 12.sp
+                        )
+                    }
+                )
+
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    label = { Text("Confirm New Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (confirmVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmVisible = !confirmVisible }) {
+                            Icon(if (confirmVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
+                        }
+                    },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = PrimaryBlue,
+                        containerColor = DarkCard
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword
+                )
+                
+                if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) {
+                    Text("Passwords do not match", color = ErrorRed, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { 
+                    onSave(if (hasPasswordProvider) currentPassword else null, newPassword) 
+                },
+                enabled = !isLoading && 
+                          (!hasPasswordProvider || currentPassword.isNotBlank()) && 
+                          newPassword.length >= Constants.MIN_PASSWORD_LENGTH && confirmPassword == newPassword
+            ) {
+                Text(if (isLoading) "Updating..." else "Update", color = PrimaryBlue)
             }
         },
         dismissButton = {

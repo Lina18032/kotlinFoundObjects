@@ -1,7 +1,7 @@
 package com.example.mynewapplication.ui.screens.auth
 
 
-import android.content.Context
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -56,7 +56,7 @@ fun LoginScreen(
     LaunchedEffect(Unit) {
         try {
             val account = GoogleSignIn.getLastSignedInAccount(context)
-            if (account != null && account.email?.endsWith("@estin.dz") == true) {
+            if (account != null && account.email?.endsWith(Constants.EMAIL_DOMAIN) == true) {
                 lastSignedInAccount = account
             }
         } catch (e: Exception) {
@@ -71,10 +71,14 @@ fun LoginScreen(
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.result
-            lastSignedInAccount = account
-            viewModel.handleGoogleSignInResult(account, onLoginSuccess)
+            if (account?.email?.endsWith(Constants.EMAIL_DOMAIN) == true) {
+                lastSignedInAccount = account
+            } else {
+                lastSignedInAccount = null
+            }
+            viewModel.handleGoogleSignInResult(account, context, onLoginSuccess)
         } catch (e: Exception) {
-            viewModel.handleGoogleSignInResult(null, onLoginSuccess)
+            viewModel.handleGoogleSignInResult(null, context, onLoginSuccess)
         }
     }
 
