@@ -48,22 +48,12 @@ class HomeViewModel : ViewModel() {
                         filterItems()
                     },
                     onFailure = { error ->
-                        val currentUserId = firebaseService.getCurrentUser()?.uid
-                        val fallbackItems = currentUserId?.let { userId ->
-                            firebaseService.getUserLostItems(userId).getOrDefault(emptyList())
-                        } ?: emptyList()
-
                         _uiState.value = _uiState.value.copy(
-                            items = fallbackItems,
-                            filteredItems = fallbackItems,
+                            items = emptyList(),
+                            filteredItems = emptyList(),
                             isLoading = false,
-                            error = if (fallbackItems.isEmpty()) {
-                                error.message ?: "Failed to load items"
-                            } else {
-                                null
-                            }
+                            error = error.message ?: "Failed to load items"
                         )
-                        filterItems()
                     }
                 )
             } catch (e: Exception) {

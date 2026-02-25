@@ -56,7 +56,9 @@ fun LoginScreen(
     LaunchedEffect(Unit) {
         try {
             val account = GoogleSignIn.getLastSignedInAccount(context)
-            lastSignedInAccount = account
+            if (account != null && account.email?.endsWith("@estin.dz") == true) {
+                lastSignedInAccount = account
+            }
         } catch (e: Exception) {
             // No previous account
         }
@@ -73,12 +75,6 @@ fun LoginScreen(
             viewModel.handleGoogleSignInResult(account, onLoginSuccess)
         } catch (e: Exception) {
             viewModel.handleGoogleSignInResult(null, onLoginSuccess)
-        }
-    }
-
-    LaunchedEffect(uiState.isLoggedIn) {
-        if (uiState.isLoggedIn) {
-            onLoginSuccess()
         }
     }
 

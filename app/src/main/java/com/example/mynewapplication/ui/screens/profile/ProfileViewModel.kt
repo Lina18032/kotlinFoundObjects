@@ -189,9 +189,9 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    fun logout(onLogoutComplete: () -> Unit) {
+    fun logout(context: android.content.Context, onLogoutComplete: () -> Unit) {
         viewModelScope.launch {
-            firebaseService.signOut()
+            firebaseService.signOut(context)
             onLogoutComplete()
         }
     }

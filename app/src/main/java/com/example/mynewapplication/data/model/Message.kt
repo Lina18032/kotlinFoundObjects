@@ -5,7 +5,9 @@ data class ChatConversation(
     val itemId: String = "",
     val participants: List<String> = emptyList(),
     val lastMessage: ChatMessage? = null,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val otherUserName: String = "",
+    val itemTitle: String = ""
 )
 
 data class ChatMessage(

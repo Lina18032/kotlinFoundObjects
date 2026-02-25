@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.data.model.Category
 import com.example.mynewapplication.data.model.ItemStatus
 import com.example.mynewapplication.ui.components.LguinahTextField
@@ -38,9 +39,17 @@ import com.example.mynewapplication.utils.Constants
 fun AddItemScreen(
     onBack: () -> Unit,
     onItemPosted: () -> Unit,
+    itemToEdit: LostItem? = null,
     viewModel: AddItemViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Initialize if editing
+    LaunchedEffect(itemToEdit) {
+        if (itemToEdit != null) {
+            viewModel.setItemToEdit(itemToEdit)
+        }
+    }
 
     // Image picker
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -60,7 +69,7 @@ fun AddItemScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Item") },
+                title = { Text(if (uiState.isEditMode) "Edit Item" else "Add Item") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -148,17 +157,23 @@ fun AddItemScreen(
             // Images
             item {
                 ImageSection(
-                    images = uiState.selectedImages,
+                    selectedImages = uiState.selectedImages,
+                    existingImageUrls = uiState.existingImageUrls,
                     canAddMore = uiState.canAddMoreImages,
                     onAddImage = { imagePickerLauncher.launch("image/*") },
-                    onRemoveImage = viewModel::onImageRemoved
+                    onRemoveSelectedImage = viewModel::onImageRemoved,
+                    onRemoveExistingImage = viewModel::onExistingImageRemoved
                 )
             }
 
             // Submit Button
             item {
                 PrimaryButton(
-                    text = if (uiState.isLoading) "Posting..." else "Post Item",
+                    text = if (uiState.isLoading) {
+                        if (uiState.isEditMode) "Updating..." else "Posting..."
+                    } else {
+                        if (uiState.isEditMode) "Save Changes" else "Post Item"
+                    },
                     onClick = {
                         viewModel.submitItem {
                             onItemPosted()
@@ -284,10 +299,12 @@ fun CategorySelector(
 
 @Composable
 fun ImageSection(
-    images: List<Uri>,
+    selectedImages: List<Uri>,
+    existingImageUrls: List<String>,
     canAddMore: Boolean,
     onAddImage: () -> Unit,
-    onRemoveImage: (Uri) -> Unit
+    onRemoveSelectedImage: (Uri) -> Unit,
+    onRemoveExistingImage: (String) -> Unit
 ) {
     Column {
         Row(
@@ -295,14 +312,15 @@ fun ImageSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val totalImages = selectedImages.size + existingImageUrls.size
             Text(
-                text = "Photos (Optional)",
+                text = "Photos",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
             Text(
-                text = "${images.size}/${Constants.MAX_IMAGES}",
+                text = "$totalImages/${Constants.MAX_IMAGES}",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
@@ -342,8 +360,40 @@ fun ImageSection(
                 }
             }
 
-            // Display Images
-            items(images) { uri ->
+            // Display Existing Images (from URLs)
+            items(existingImageUrls) { url ->
+                Box(
+                    modifier = Modifier.size(100.dp)
+                ) {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "Existing Image",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    // Remove button
+                    IconButton(
+                        onClick = { onRemoveExistingImage(url) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(28.dp)
+                            .background(ErrorRed, RoundedCornerShape(14.dp))
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            // Display Newly Selected Images
+            items(selectedImages) { uri ->
                 Box(
                     modifier = Modifier.size(100.dp)
                 ) {
@@ -358,7 +408,7 @@ fun ImageSection(
 
                     // Remove button
                     IconButton(
-                        onClick = { onRemoveImage(uri) },
+                        onClick = { onRemoveSelectedImage(uri) },
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .size(28.dp)

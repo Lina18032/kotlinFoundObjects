@@ -3,6 +3,7 @@ package com.example.mynewapplication.ui.screens.profile
 
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +11,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,79 +32,101 @@ import com.example.mynewapplication.ui.components.UserAvatar
 import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit,
+    onItemClick: (LostItem) -> Unit,
+    refreshTrigger: Int = 0,
     viewModel: ProfileViewModel = viewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    if (uiState.isLoading) {
-        LoadingIndicator()
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header
-            ProfileHeader(
-                user = uiState.user,
-                onEditClick = viewModel::showEditDialog,
-                onLogoutClick = {
-                    viewModel.logout {
-                        onLogout()
+    LaunchedEffect(refreshTrigger) {
+        viewModel.refreshProfile()
+    }
+
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = uiState.isLoading,
+        onRefresh = { viewModel.refreshProfile() }
+    )
+
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        if (uiState.isLoading && uiState.myLostItems.isEmpty() && uiState.myFoundItems.isEmpty()) {
+            LoadingIndicator()
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                ProfileHeader(
+                    user = uiState.user,
+                    onEditClick = viewModel::showEditDialog,
+                    onLogoutClick = {
+                        viewModel.logout(context) {
+                            onLogout()
+                        }
                     }
+                )
+
+                // Tabs
+                TabRow(
+                    selectedTabIndex = uiState.selectedTab,
+                    containerColor = DarkSurface,
+                    contentColor = PrimaryBlue
+                ) {
+                    Tab(
+                        selected = uiState.selectedTab == 0,
+                        onClick = { viewModel.onTabSelected(0) },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Lost")
+                                Text(
+                                    "(${uiState.myLostItems.size})",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = uiState.selectedTab == 1,
+                        onClick = { viewModel.onTabSelected(1) },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Found")
+                                Text(
+                                    "(${uiState.myFoundItems.size})",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    )
                 }
-            )
 
-            // Tabs
-            TabRow(
-                selectedTabIndex = uiState.selectedTab,
-                containerColor = DarkSurface,
-                contentColor = PrimaryBlue
-            ) {
-                Tab(
-                    selected = uiState.selectedTab == 0,
-                    onClick = { viewModel.onTabSelected(0) },
-                    text = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Lost")
-                            Text(
-                                "(${uiState.myLostItems.size})",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                )
-                Tab(
-                    selected = uiState.selectedTab == 1,
-                    onClick = { viewModel.onTabSelected(1) },
-                    text = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Found")
-                            Text(
-                                "(${uiState.myFoundItems.size})",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                )
-            }
-
-            // Content
-            when (uiState.selectedTab) {
-                0 -> ItemsList(
-                    items = uiState.myLostItems,
-                    emptyMessage = "You haven't reported any lost items yet",
-                    onDeleteItem = viewModel::deleteItem
-                )
-                1 -> ItemsList(
-                    items = uiState.myFoundItems,
-                    emptyMessage = "You haven't reported any found items yet",
-                    onDeleteItem = viewModel::deleteItem
-                )
+                // Content
+                when (uiState.selectedTab) {
+                    0 -> ItemsList(
+                        items = uiState.myLostItems,
+                        emptyMessage = "You haven't reported any lost items yet",
+                        onDeleteItem = viewModel::deleteItem,
+                        onItemClick = onItemClick
+                    )
+                    1 -> ItemsList(
+                        items = uiState.myFoundItems,
+                        emptyMessage = "You haven't reported any found items yet",
+                        onDeleteItem = viewModel::deleteItem,
+                        onItemClick = onItemClick
+                    )
+                }
             }
         }
+        
+        PullRefreshIndicator(
+            refreshing = uiState.isLoading,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 
     // Edit Dialog
@@ -237,7 +264,8 @@ fun ProfileHeader(
 fun ItemsList(
     items: List<LostItem>,
     emptyMessage: String,
-    onDeleteItem: (String) -> Unit
+    onDeleteItem: (String) -> Unit,
+    onItemClick: (LostItem) -> Unit
 ) {
     if (items.isEmpty()) {
         EmptyState(
@@ -254,7 +282,8 @@ fun ItemsList(
             items(items) { item ->
                 MyItemCard(
                     item = item,
-                    onDeleteClick = { onDeleteItem(item.id) }
+                    onDeleteClick = { onDeleteItem(item.id) },
+                    onClick = { onItemClick(item) }
                 )
             }
         }
@@ -264,12 +293,15 @@ fun ItemsList(
 @Composable
 fun MyItemCard(
     item: LostItem,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard)
     ) {

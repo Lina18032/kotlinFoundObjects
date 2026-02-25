@@ -8,10 +8,12 @@ data class User(
     val phoneNumber: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
+    @com.google.firebase.firestore.Exclude
     fun isValidEstinEmail(): Boolean {
         return email.endsWith("@estin.dz")
     }
 
+    @com.google.firebase.firestore.Exclude
     fun getInitials(): String {
         return name.split(" ")
             .mapNotNull { it.firstOrNull()?.toString() }

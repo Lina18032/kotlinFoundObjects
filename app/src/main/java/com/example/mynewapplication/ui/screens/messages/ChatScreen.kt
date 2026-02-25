@@ -2,6 +2,7 @@ package com.example.mynewapplication.ui.screens.messages
 
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,10 +10,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,15 +23,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.mynewapplication.data.model.ChatMessage
-import com.example.mynewapplication.ui.components.LoadingIndicator
+import com.example.mynewapplication.data.model.LostItem
+import com.example.mynewapplication.ui.components.*
 import com.example.mynewapplication.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ChatScreen(
     conversationId: String,
     onBack: () -> Unit,
+    onItemClick: (LostItem) -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -45,22 +54,36 @@ fun ChatScreen(
         }
     }
 
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = uiState.isLoading,
+        onRefresh = { viewModel.refreshChat() }
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = uiState.otherUserName,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        UserAvatar(
+                            userName = uiState.otherUserName,
+                            size = 40.dp
                         )
-                        Text(
-                            text = uiState.itemTitle,
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
+                        Column {
+                            Text(
+                                text = uiState.otherUserName,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Active now",
+                                fontSize = 11.sp,
+                                color = AccentGreen
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -81,25 +104,55 @@ fun ChatScreen(
                 .padding(padding)
         ) {
             // Messages List
-            if (uiState.isLoading) {
-                LoadingIndicator()
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    state = listState,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.messages) { message ->
-                        val currentUserId = com.example.mynewapplication.data.remote.FirebaseService().getCurrentUser()?.uid
-                        MessageBubble(
-                            message = message,
-                            isOwnMessage = message.senderId == currentUserId
-                        )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .pullRefresh(pullRefreshState)
+            ) {
+                if (uiState.isLoading && uiState.messages.isEmpty()) {
+                    LoadingIndicator()
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Show Related Item Card at the top
+                        uiState.relatedItem?.let { item ->
+                            item {
+                                RelatedItemCard(
+                                    item = item,
+                                    onClick = { onItemClick(item) }
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 32.dp)
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(DarkCard)
+                                )
+                                Spacer(Modifier.height(16.dp))
+                            }
+                        }
+
+                        items(uiState.messages) { message ->
+                            val currentUserId = com.example.mynewapplication.data.remote.FirebaseService().getCurrentUser()?.uid
+                            MessageBubble(
+                                message = message,
+                                isOwnMessage = message.senderId == currentUserId
+                            )
+                        }
                     }
                 }
+                
+                PullRefreshIndicator(
+                    refreshing = uiState.isLoading,
+                    state = pullRefreshState,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
 
             // Message Input
@@ -109,6 +162,78 @@ fun ChatScreen(
                 onSendClick = viewModel::sendMessage,
                 isSending = uiState.isSending
             )
+        }
+    }
+}
+
+@Composable
+fun RelatedItemCard(
+    item: LostItem,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkCard)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Item Image
+                if (item.imageUrls.isNotEmpty()) {
+                    AsyncImage(
+                        model = item.imageUrls.first(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .background(DarkSurface, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = TextTertiary
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = item.title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        StatusChip(status = item.status)
+                    }
+                    
+                    Spacer(Modifier.height(4.dp))
+                    
+                    Text(
+                        text = "Asking about this item",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
         }
     }
 }

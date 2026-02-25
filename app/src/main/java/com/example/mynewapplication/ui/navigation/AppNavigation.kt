@@ -3,6 +3,7 @@ package com.example.mynewapplication.ui.navigation
 
 
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -11,6 +12,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.data.remote.FirebaseService
 import com.example.mynewapplication.ui.components.BottomNavigationBar
@@ -35,6 +38,8 @@ fun AppNavigation(
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
     var isLoadingConversation by remember { mutableStateOf(false) }
     var homeRefreshTrigger by remember { mutableStateOf(0) }
+    var profileRefreshTrigger by remember { mutableStateOf(0) }
+    var selectedEditItem by remember { mutableStateOf<LostItem?>(null) }
 
     fun openConversationForItem(item: LostItem, closeDetailsAfterOpen: Boolean) {
         val currentUser = firebaseService.getCurrentUser()
@@ -68,17 +73,23 @@ fun AppNavigation(
         }
     }
 
-    // Show item detail screen
-    if (selectedItem != null) {
-        ItemDetailScreen(
-            item = selectedItem!!,
-            onBack = { selectedItem = null },
-            onContactClick = {
-                openConversationForItem(selectedItem!!, closeDetailsAfterOpen = true)
-            }
-        )
+    // Navigation Handlers
+    BackHandler(enabled = selectedItem != null) {
+        selectedItem = null
     }
-    
+
+    BackHandler(enabled = selectedConversationId != null && selectedItem == null) {
+        selectedConversationId = null
+    }
+
+    BackHandler(enabled = currentScreen != Screen.Home && selectedItem == null && selectedConversationId == null) {
+        if (selectedEditItem != null) {
+            selectedEditItem = null
+        }
+        currentScreen = Screen.Home
+    }
+
+    // Show chat screen
     if (isLoadingConversation) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -86,14 +97,53 @@ fun AppNavigation(
         ) {
             CircularProgressIndicator()
         }
+    } 
+    // Show item detail screen - Prioritize this so it can be shown over Chat
+    else if (selectedItem != null) {
+        val currentUser = firebaseService.getCurrentUser()
+        val isOwner = currentUser?.uid == selectedItem?.userId
+        val context = LocalContext.current
+        
+        ItemDetailScreen(
+            item = selectedItem!!,
+            onBack = { selectedItem = null },
+            onContactClick = {
+                openConversationForItem(selectedItem!!, closeDetailsAfterOpen = true)
+            },
+            onEdit = {
+                selectedEditItem = selectedItem
+                selectedItem = null
+                currentScreen = Screen.Add
+            },
+            onDelete = {
+                val itemToDelete = selectedItem
+                if (itemToDelete != null) {
+                    coroutineScope.launch {
+                        val result = firebaseService.deleteLostItem(itemToDelete.id)
+                        result.fold(
+                            onSuccess = {
+                                Toast.makeText(context, "Item deleted successfully", Toast.LENGTH_SHORT).show()
+                                selectedItem = null
+                                homeRefreshTrigger++
+                                profileRefreshTrigger++
+                            },
+                            onFailure = { error ->
+                                Toast.makeText(context, "Failed to delete: ${error.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    }
+                }
+            },
+            isOwner = isOwner
+        )
     }
-    // Show chat screen
     else if (selectedConversationId != null) {
         ChatScreen(
             conversationId = selectedConversationId!!,
-            onBack = { selectedConversationId = null }
+            onBack = { selectedConversationId = null },
+            onItemClick = { item -> selectedItem = item }
         )
-    }
+    } 
     // Show main app
     else {
         Scaffold(
@@ -132,9 +182,15 @@ fun AppNavigation(
                         refreshTrigger = homeRefreshTrigger
                     )
                     is Screen.Add -> AddItemScreen(
-                        onBack = { currentScreen = Screen.Home },
+                        itemToEdit = selectedEditItem,
+                        onBack = { 
+                            selectedEditItem = null
+                            currentScreen = Screen.Home 
+                        },
                         onItemPosted = {
                             homeRefreshTrigger++
+                            profileRefreshTrigger++
+                            selectedEditItem = null
                             currentScreen = Screen.Home
                         }
                     )
@@ -143,7 +199,11 @@ fun AppNavigation(
                             selectedConversationId = conversationId
                         }
                     )
-                    is Screen.Profile -> ProfileScreen(onLogout = onLogout)
+                    is Screen.Profile -> ProfileScreen(
+                        onLogout = onLogout,
+                        onItemClick = { item -> selectedItem = item },
+                        refreshTrigger = profileRefreshTrigger
+                    )
                     else -> HomeScreen(
                         onAddClick = { currentScreen = Screen.Add },
                         onItemClick = { item -> selectedItem = item },

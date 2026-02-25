@@ -15,13 +15,20 @@ import com.example.mynewapplication.ui.navigation.AppNavigation
 import com.example.mynewapplication.ui.screens.auth.LoginScreen
 import com.example.mynewapplication.ui.screens.auth.WelcomeScreen
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Initialize Cloudinary
-        CloudinaryService.initialize(this)
+        // Initialize Cloudinary on a background thread to prevent blocking main thread
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                CloudinaryService.initialize(applicationContext)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         
         setContent {
             LguinahTheme {
@@ -64,6 +71,7 @@ class MainActivity : ComponentActivity() {
                             else -> {
                                 AppNavigation(
                                     onLogout = {
+                                        this@MainActivity.viewModelStore.clear()
                                         isLoggedIn = false
                                         showWelcome = true
                                     }

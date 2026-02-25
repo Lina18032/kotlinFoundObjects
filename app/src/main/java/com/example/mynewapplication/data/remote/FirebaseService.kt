@@ -16,6 +16,13 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
+import com.google.firebase.firestore.DocumentChange
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.runBlocking
+import android.util.Log
 
 class FirebaseService {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -106,8 +113,15 @@ class FirebaseService {
         }
     }
 
-    fun signOut() {
+    fun signOut(context: Context? = null) {
         auth.signOut()
+        if (context != null) {
+            try {
+                getGoogleSignInClient(context).signOut()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
     }
 
     // User Functions
@@ -192,47 +206,46 @@ class FirebaseService {
     suspend fun getAllLostItems(
         category: String? = null,
         status: String? = null,
-        limit: Int = 50
+        limit: Int = 100
     ): Result<List<LostItem>> {
         return try {
-            var orderedQuery: Query = firestore.collection("lostItems")
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .limit(limit.toLong())
-
-            if (category != null) {
-                orderedQuery = orderedQuery.whereEqualTo("category", category)
-            }
-
-            if (status != null) {
-                orderedQuery = orderedQuery.whereEqualTo("status", status)
-            }
-
             val snapshot = try {
-                orderedQuery.get().await()
-            } catch (e: FirebaseFirestoreException) {
-                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
-                    var fallbackQuery: Query = firestore.collection("lostItems")
-                        .limit(limit.toLong())
-
-                    if (category != null) {
-                        fallbackQuery = fallbackQuery.whereEqualTo("category", category)
-                    }
-                    if (status != null) {
-                        fallbackQuery = fallbackQuery.whereEqualTo("status", status)
-                    }
-
-                    fallbackQuery.get().await()
-                } else {
-                    throw e
+                var orderedQuery: Query = firestore.collection("lostItems")
+                if (category != null) {
+                    orderedQuery = orderedQuery.whereEqualTo("category", category)
                 }
+                if (status != null) {
+                    orderedQuery = orderedQuery.whereEqualTo("status", status)
+                }
+                orderedQuery.orderBy("timestamp", Query.Direction.DESCENDING).limit(limit.toLong()).get().await()
+            } catch (e: Exception) {
+                // Secondary fallback: omit orderBy to avoid FAILED_PRECONDITION
+                var fallbackQuery: Query = firestore.collection("lostItems")
+                if (category != null) fallbackQuery = fallbackQuery.whereEqualTo("category", category)
+                if (status != null) fallbackQuery = fallbackQuery.whereEqualTo("status", status)
+                fallbackQuery.limit(limit.toLong()).get().await()
             }
 
-            val items = snapshot.documents
+            var items = snapshot.documents
                 .mapNotNull { it.toObject(LostItem::class.java) }
                 .sortedByDescending { it.timestamp }
             Result.success(items)
         } catch (e: Exception) {
-            Result.failure(e)
+            // Absolute fallback: fetch all and filter/sort locally (good for small/medium collections)
+            try {
+                val allDocs = firestore.collection("lostItems").get().await()
+                var mapped = allDocs.documents.mapNotNull { it.toObject(LostItem::class.java) }
+                if (category != null) mapped = mapped.filter { it.category.name == category }
+                if (status != null) mapped = mapped.filter { it.status.name == status }
+                mapped = mapped.sortedByDescending { it.timestamp }.take(limit)
+                if (mapped.isEmpty() && allDocs.documents.isEmpty()) {
+                    Result.failure(e) // Original exception is more informative if completely empty
+                } else {
+                    Result.success(mapped)
+                }
+            } catch (inner: Exception) {
+                Result.failure(e)
+            }
         }
     }
 
@@ -244,15 +257,11 @@ class FirebaseService {
                     .orderBy("timestamp", Query.Direction.DESCENDING)
                     .get()
                     .await()
-            } catch (e: FirebaseFirestoreException) {
-                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
-                    firestore.collection("lostItems")
-                        .whereEqualTo("userId", userId)
-                        .get()
-                        .await()
-                } else {
-                    throw e
-                }
+            } catch (e: Exception) {
+                firestore.collection("lostItems")
+                    .whereEqualTo("userId", userId)
+                    .get()
+                    .await()
             }
 
             val items = snapshot.documents
@@ -359,15 +368,11 @@ class FirebaseService {
                     .orderBy("updatedAt", Query.Direction.DESCENDING)
                     .get()
                     .await()
-            } catch (e: FirebaseFirestoreException) {
-                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
-                    firestore.collection("conversations")
-                        .whereArrayContains("participants", userId)
-                        .get()
-                        .await()
-                } else {
-                    throw e
-                }
+            } catch (e: Exception) {
+                firestore.collection("conversations")
+                    .whereArrayContains("participants", userId)
+                    .get()
+                    .await()
             }
 
             val conversations = mutableListOf<ChatConversation>()
@@ -384,16 +389,12 @@ class FirebaseService {
                         .limit(1)
                         .get()
                         .await()
-                } catch (e: FirebaseFirestoreException) {
-                    if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
-                        firestore.collection("messages")
-                            .whereEqualTo("conversationId", doc.id)
-                            .limit(50)
-                            .get()
-                            .await()
-                    } else {
-                        throw e
-                    }
+                } catch (e: Exception) {
+                    firestore.collection("messages")
+                        .whereEqualTo("conversationId", doc.id)
+                        .limit(50)
+                        .get()
+                        .await()
                 }
                 
                 val lastMessage = lastMessageSnapshot.documents
@@ -403,6 +404,9 @@ class FirebaseService {
                 // Get other participant info
                 val otherUserId = participants.firstOrNull { it != userId }
                 val otherUser = otherUserId?.let { getUser(it).getOrNull() }
+
+                // Get item info
+                val item = getLostItem(itemId).getOrNull()
                 
                 conversations.add(
                     ChatConversation(
@@ -413,7 +417,9 @@ class FirebaseService {
                             senderName = if (lastMessage.senderId == userId) "Me" 
                                          else (otherUser?.name ?: lastMessage.senderName)
                         ),
-                        updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+                        updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis(),
+                        otherUserName = otherUser?.name ?: "User",
+                        itemTitle = item?.title ?: "Item"
                     )
                 )
             }
@@ -422,6 +428,102 @@ class FirebaseService {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+    
+    fun listenToConversations(userId: String): Flow<List<ChatConversation>> = callbackFlow {
+        val listener = firestore.collection("conversations")
+            .whereArrayContains("participants", userId)
+            .orderBy("updatedAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                
+                if (snapshot != null) {
+                    // We run this in runBlocking to reuse the suspend functions, 
+                    // though it's not ideal for high frequency updates, it's consistent with existing logic.
+                    // In a production app, we would cache user/item data more effectively.
+                    val conversations = runBlocking {
+                        snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val itemId = doc.getString("itemId") ?: return@mapNotNull null
+                                val participants = (doc.get("participants") as? List<*>)?.mapNotNull { it as? String } ?: return@mapNotNull null
+                                
+                                val lastMessageSnapshot = firestore.collection("messages")
+                                    .whereEqualTo("conversationId", doc.id)
+                                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                                    .limit(1)
+                                    .get()
+                                    .await()
+                                
+                                val lastMessage = lastMessageSnapshot.documents
+                                    .mapNotNull { it.toObject(ChatMessage::class.java) }
+                                    .firstOrNull()
+                                
+                                val otherUserId = participants.firstOrNull { it != userId }
+                                val otherUser = otherUserId?.let { getUser(it).getOrNull() }
+                                val item = getLostItem(itemId).getOrNull()
+                                
+                                ChatConversation(
+                                    id = doc.id,
+                                    itemId = itemId,
+                                    participants = participants,
+                                    lastMessage = lastMessage?.copy(
+                                        senderName = if (lastMessage.senderId == userId) "Me" 
+                                                     else (otherUser?.name ?: lastMessage.senderName)
+                                    ),
+                                    updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis(),
+                                    otherUserName = otherUser?.name ?: "User",
+                                    itemTitle = item?.title ?: "Item"
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }.sortedByDescending { it.updatedAt }
+                    }
+                    trySend(conversations)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun listenToMessages(conversationId: String): Flow<List<ChatMessage>> = callbackFlow {
+        val listener = firestore.collection("messages")
+            .whereEqualTo("conversationId", conversationId)
+            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                
+                if (snapshot != null) {
+                    val messages = snapshot.documents.mapNotNull { 
+                        it.toObject(ChatMessage::class.java) 
+                    }.sortedBy { it.timestamp }
+                    trySend(messages)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun listenToNewItems(): Flow<LostItem> = callbackFlow {
+        val listener = firestore.collection("lostItems")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(1)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                
+                if (snapshot != null && !snapshot.isEmpty) {
+                    val change = snapshot.documentChanges.firstOrNull { it.type == DocumentChange.Type.ADDED }
+                    if (change != null) {
+                        val item = change.document.toObject(LostItem::class.java)
+                        trySend(item)
+                    }
+                }
+            }
+        awaitClose { listener.remove() }
     }
 
     /**
@@ -435,15 +537,11 @@ class FirebaseService {
                     .orderBy("timestamp", Query.Direction.ASCENDING)
                     .get()
                     .await()
-            } catch (e: FirebaseFirestoreException) {
-                if (e.code == FirebaseFirestoreException.Code.FAILED_PRECONDITION) {
-                    firestore.collection("messages")
-                        .whereEqualTo("conversationId", conversationId)
-                        .get()
-                        .await()
-                } else {
-                    throw e
-                }
+            } catch (e: Exception) {
+                firestore.collection("messages")
+                    .whereEqualTo("conversationId", conversationId)
+                    .get()
+                    .await()
             }
 
             val messages = snapshot.documents

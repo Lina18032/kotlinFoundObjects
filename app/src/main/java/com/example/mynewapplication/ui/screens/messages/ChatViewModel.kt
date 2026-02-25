@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.Job
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -17,7 +19,9 @@ data class ChatUiState(
     val isSending: Boolean = false,
     val error: String? = null,
     val otherUserName: String = "",
-    val itemTitle: String = ""
+    val otherUser: com.example.mynewapplication.data.model.User? = null,
+    val itemTitle: String = "",
+    val relatedItem: com.example.mynewapplication.data.model.LostItem? = null
 )
 
 class ChatViewModel : ViewModel() {
@@ -26,6 +30,7 @@ class ChatViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     private var currentConversationId: String? = null
+    private var messagesJob: Job? = null
 
     fun loadChat(conversationId: String, otherUserName: String = "", itemTitle: String = "") {
         currentConversationId = conversationId
@@ -43,26 +48,27 @@ class ChatViewModel : ViewModel() {
                 }
 
                 // Get conversation info if not provided
-                var finalOtherUserName = otherUserName
-                var finalItemTitle = itemTitle
-
-                if (otherUserName.isEmpty() || itemTitle.isEmpty()) {
+                if (true) { // Always fetch to be sure we have the latest
                     val conversationsResult = firebaseService.getUserConversations(currentUser.uid)
                     conversationsResult.getOrNull()?.firstOrNull { it.id == conversationId }?.let { conv ->
-                        if (finalItemTitle.isEmpty()) {
-                            val itemResult = firebaseService.getLostItem(conv.itemId)
-                            itemResult.getOrNull()?.let { item ->
-                                finalItemTitle = item.title
-                            }
+                        // Fetch Item
+                        val itemResult = firebaseService.getLostItem(conv.itemId)
+                        itemResult.getOrNull()?.let { item ->
+                            _uiState.value = _uiState.value.copy(
+                                relatedItem = item,
+                                itemTitle = item.title
+                            )
                         }
                         
-                        if (finalOtherUserName.isEmpty()) {
-                            val otherUserId = conv.participants.firstOrNull { it != currentUser.uid }
-                            otherUserId?.let { userId ->
-                                val userResult = firebaseService.getUser(userId)
-                                userResult.getOrNull()?.let { user ->
-                                    finalOtherUserName = user.name
-                                }
+                        // Fetch Other User
+                        val otherUserId = conv.participants.firstOrNull { it != currentUser.uid }
+                        otherUserId?.let { userId ->
+                            val userResult = firebaseService.getUser(userId)
+                            userResult.getOrNull()?.let { user ->
+                                _uiState.value = _uiState.value.copy(
+                                    otherUser = user,
+                                    otherUserName = user.name
+                                )
                             }
                         }
                     }
@@ -82,9 +88,7 @@ class ChatViewModel : ViewModel() {
                         
                         _uiState.value = _uiState.value.copy(
                             messages = processedMessages,
-                            isLoading = false,
-                            otherUserName = finalOtherUserName.ifEmpty { "User" },
-                            itemTitle = finalItemTitle.ifEmpty { "Item" }
+                            isLoading = false
                         )
                         
                         // Mark messages as read
@@ -108,6 +112,10 @@ class ChatViewModel : ViewModel() {
 
     fun onMessageTextChange(text: String) {
         _uiState.value = _uiState.value.copy(messageText = text)
+    }
+
+    fun refreshChat() {
+        currentConversationId?.let { loadChat(it, _uiState.value.otherUserName, _uiState.value.itemTitle) }
     }
 
     fun sendMessage() {

@@ -19,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
 import coil.compose.AsyncImage
 import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.data.model.ItemStatus
@@ -36,8 +38,12 @@ import com.example.mynewapplication.ui.theme.*
 fun ItemDetailScreen(
     item: LostItem,
     onBack: () -> Unit,
-    onContactClick: () -> Unit
+    onContactClick: () -> Unit,
+    onEdit: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    isOwner: Boolean = false
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -48,11 +54,54 @@ fun ItemDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* Share */ }) {
+                    // Share button
+                    val context = LocalContext.current
+                    IconButton(onClick = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, item.title)
+                            putExtra(
+                                Intent.EXTRA_TEXT,
+                                "Check out this item:\n${item.title}\n${item.description}\nLocation: ${item.location}"
+                            )
+                        }
+                        context.startActivity(
+                            Intent.createChooser(shareIntent, "Share via")
+                        )
+                    }) {
                         Icon(Icons.Default.Share, "Share")
                     }
-                    IconButton(onClick = { /* More options */ }) {
-                        Icon(Icons.Default.MoreVert, "More")
+                    // More options dropdown (Edit) - Only show if current user is the owner
+                    if (isOwner) {
+                        var expanded by remember { mutableStateOf(false) }
+                        IconButton(onClick = { expanded = true }) {
+                            Icon(Icons.Default.MoreVert, "More")
+                        }
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit") },
+                                onClick = {
+                                    expanded = false
+                                    onEdit()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = ErrorRed) },
+                                onClick = {
+                                    expanded = false
+                                    showDeleteDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ErrorRed)
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -62,6 +111,29 @@ fun ItemDetailScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete Item") },
+                text = { Text("Are you sure you want to delete this item? This action cannot be undone.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteDialog = false
+                            onDelete()
+                        }
+                    ) {
+                        Text("Delete", color = ErrorRed)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                },
+                containerColor = DarkCard
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()

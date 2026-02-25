@@ -1,5 +1,6 @@
 package com.example.mynewapplication.data.model
 
+import com.google.firebase.firestore.PropertyName
 data class LostItem(
     val id: String = "",
     val title: String = "",
@@ -12,8 +13,17 @@ data class LostItem(
     val userName: String = "",
     val userEmail: String = "",
     val imageUrls: List<String> = emptyList(),
-    val isResolved: Boolean = false
+    @get:PropertyName("isResolved")
+    val isResolved: Boolean = false,
+    
+    // Legacy fields that might exist in old documents
+    @get:JvmName("getFirebaseImageUrls")
+    val imageURLs: List<String> = emptyList(),
+    val resolved: Boolean = false,
+    @get:PropertyName("formattedDate")
+    val _formattedDate: String = ""
 ) {
+    @com.google.firebase.firestore.Exclude
     fun getFormattedDate(): String {
         val now = System.currentTimeMillis()
         val diff = now - timestamp
