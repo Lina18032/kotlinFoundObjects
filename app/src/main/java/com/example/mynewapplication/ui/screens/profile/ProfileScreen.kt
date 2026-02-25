@@ -11,6 +11,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +32,7 @@ import com.example.mynewapplication.ui.components.UserAvatar
 import com.example.mynewapplication.ui.screens.home.components.ItemCard
 import com.example.mynewapplication.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ProfileScreen(
     onLogout: () -> Unit,
@@ -37,21 +41,30 @@ fun ProfileScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = uiState.isLoading,
+        onRefresh = { viewModel.refreshProfile() }
+    )
 
-    if (uiState.isLoading && uiState.myLostItems.isEmpty() && uiState.myFoundItems.isEmpty()) {
-        LoadingIndicator()
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header
-            ProfileHeader(
-                user = uiState.user,
-                onEditClick = viewModel::showEditDialog,
-                onLogoutClick = {
-                    viewModel.logout(context) {
-                        onLogout()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pullRefresh(pullRefreshState)
+    ) {
+        if (uiState.isLoading && uiState.myLostItems.isEmpty() && uiState.myFoundItems.isEmpty()) {
+            LoadingIndicator()
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                ProfileHeader(
+                    user = uiState.user,
+                    onEditClick = viewModel::showEditDialog,
+                    onLogoutClick = {
+                        viewModel.logout(context) {
+                            onLogout()
+                        }
                     }
-                }
-            )
+                )
 
             // Tabs
             TabRow(
@@ -90,21 +103,27 @@ fun ProfileScreen(
             }
 
             // Content
-            when (uiState.selectedTab) {
-                0 -> ItemsList(
-                    items = uiState.myLostItems,
-                    emptyMessage = "You haven't reported any lost items yet",
-                    onDeleteItem = viewModel::deleteItem,
-                    onItemClick = onItemClick
-                )
-                1 -> ItemsList(
-                    items = uiState.myFoundItems,
-                    emptyMessage = "You haven't reported any found items yet",
-                    onDeleteItem = viewModel::deleteItem,
-                    onItemClick = onItemClick
-                )
+                when (uiState.selectedTab) {
+                    0 -> ItemsList(
+                        items = uiState.myLostItems,
+                        emptyMessage = "You haven't reported any lost items yet",
+                        onDeleteItem = viewModel::deleteItem,
+                        onItemClick = onItemClick
+                    )
+                    1 -> ItemsList(
+                        items = uiState.myFoundItems,
+                        emptyMessage = "You haven't reported any found items yet",
+                        onDeleteItem = viewModel::deleteItem,
+                        onItemClick = onItemClick
+                    )
+                }
             }
         }
+        PullRefreshIndicator(
+            refreshing = uiState.isLoading,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 
     // Edit Dialog

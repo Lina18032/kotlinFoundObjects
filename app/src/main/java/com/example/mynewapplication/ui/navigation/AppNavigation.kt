@@ -21,6 +21,7 @@ import com.example.mynewapplication.ui.screens.home.HomeScreen
 import com.example.mynewapplication.ui.screens.add.AddItemScreen
 import com.example.mynewapplication.ui.screens.messages.MessagesScreen
 import com.example.mynewapplication.ui.screens.messages.ChatScreen
+import com.example.mynewapplication.ui.screens.matching.MatchResultsScreen
 import com.example.mynewapplication.ui.screens.profile.ProfileScreen
 import com.example.mynewapplication.ui.screens.detail.ItemDetailScreen
 import com.example.mynewapplication.ui.theme.DarkBackground
@@ -38,6 +39,7 @@ fun AppNavigation(
     var selectedItem by remember { mutableStateOf<LostItem?>(null) }
     var isLoadingConversation by remember { mutableStateOf(false) }
     var selectedEditItem by remember { mutableStateOf<LostItem?>(null) }
+    var suggestedMatches by remember { mutableStateOf<List<LostItem>>(emptyList()) }
 
     fun openConversationForItem(item: LostItem, closeDetailsAfterOpen: Boolean) {
         val currentUser = firebaseService.getCurrentUser()
@@ -182,9 +184,14 @@ fun AppNavigation(
                             selectedEditItem = null
                             currentScreen = Screen.Home 
                         },
-                        onItemPosted = {
+                        onItemPosted = { matches ->
                             selectedEditItem = null
-                            currentScreen = Screen.Home
+                            if (matches.isNotEmpty()) {
+                                suggestedMatches = matches
+                                currentScreen = Screen.MatchResults
+                            } else {
+                                currentScreen = Screen.Home
+                            }
                         }
                     )
                     is Screen.Messages -> MessagesScreen(
@@ -194,6 +201,11 @@ fun AppNavigation(
                     )
                     is Screen.Profile -> ProfileScreen(
                         onLogout = onLogout,
+                        onItemClick = { item -> selectedItem = item }
+                    )
+                    is Screen.MatchResults -> MatchResultsScreen(
+                        matches = suggestedMatches,
+                        onBack = { currentScreen = Screen.Home },
                         onItemClick = { item -> selectedItem = item }
                     )
                     else -> HomeScreen(

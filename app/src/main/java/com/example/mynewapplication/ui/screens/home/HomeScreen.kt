@@ -6,7 +6,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -17,6 +22,7 @@ import com.example.mynewapplication.ui.screens.home.components.SearchTopBar
 import com.example.mynewapplication.ui.components.LoadingIndicator
 import com.example.mynewapplication.ui.components.EmptyState
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     onAddClick: () -> Unit,
@@ -25,13 +31,22 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = uiState.isLoading,
+        onRefresh = { viewModel.refreshItems() }
+    )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        SearchTopBar(
-            searchQuery = uiState.searchQuery,
-            onSearchChange = viewModel::onSearchQueryChange,
-            onFilterClick = viewModel::toggleFilters
-        )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pullRefresh(pullRefreshState)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SearchTopBar(
+                searchQuery = uiState.searchQuery,
+                onSearchChange = viewModel::onSearchQueryChange,
+                onFilterClick = viewModel::toggleFilters
+            )
 
         if (uiState.showFilters) {
             CategoryFilterSection(
@@ -71,5 +86,11 @@ fun HomeScreen(
                 }
             }
         }
+        }
+        PullRefreshIndicator(
+            refreshing = uiState.isLoading,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }

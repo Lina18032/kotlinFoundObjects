@@ -313,6 +313,8 @@ fun MessageInput(
                     focusedBorderColor = PrimaryBlue,
                     unfocusedBorderColor = DarkCard,
                     containerColor = DarkCard,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
                     cursorColor = PrimaryBlue
                 ),
                 shape = RoundedCornerShape(24.dp),

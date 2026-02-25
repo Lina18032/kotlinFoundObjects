@@ -20,6 +20,10 @@ object Constants {
     // UI
     const val ANIMATION_DURATION = 300
     const val DEBOUNCE_TIME = 500L
+
+    // AI Matcher API (10.0.2.2 = localhost from Android emulator)
+    const val MATCHER_API_BASE_URL = "http://10.0.2.2:8000"
+    const val MATCHER_API_KEY = "change-me-in-production"
 }
 
 object PreferenceKeys {

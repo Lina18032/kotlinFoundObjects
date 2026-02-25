@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local backend secrets and runtime caches
+secrets/
+*.env
+.env
+__pycache__/
+models/__pycache__/
+services/__pycache__/
+.gradle-local/
+.idea/inspectionProfiles/

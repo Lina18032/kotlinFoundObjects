@@ -9,6 +9,7 @@ import com.example.mynewapplication.data.model.ItemStatus
 import com.example.mynewapplication.data.model.LostItem
 import com.example.mynewapplication.data.remote.CloudinaryService
 import com.example.mynewapplication.data.remote.FirebaseService
+import com.example.mynewapplication.data.remote.MatchingApiService
 import com.example.mynewapplication.utils.Constants
 import com.example.mynewapplication.utils.ValidationUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +59,7 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
 
     private val firebaseService = FirebaseService()
     private val cloudinaryService = CloudinaryService(application)
+    private val matchingApiService = MatchingApiService()
 
     private val _uiState = MutableStateFlow(AddItemUiState())
     val uiState: StateFlow<AddItemUiState> = _uiState.asStateFlow()
@@ -157,7 +159,7 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
                 locationValidation.isValid
     }
 
-    fun submitItem(onSuccess: () -> Unit) {
+    fun submitItem(onSuccess: (List<LostItem>, ItemStatus) -> Unit) {
         if (!validateAllFields()) {
             return
         }
@@ -218,9 +220,11 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
                     val updateResult = firebaseService.updateLostItem(editedItem)
                     updateResult.fold(
                         onSuccess = {
+                            val matches = findPotentialMatches(editedItem)
+                            val postedStatus = editedItem.status
                             _uiState.value = _uiState.value.copy(isLoading = false, isSuccess = true)
                             resetForm()
-                            onSuccess()
+                            onSuccess(matches, postedStatus)
                         },
                         onFailure = { error ->
                             _uiState.value = _uiState.value.copy(
@@ -249,13 +253,15 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
                     val saveResult = firebaseService.saveLostItem(newItem)
                     saveResult.fold(
                         onSuccess = { itemId ->
+                            val savedItem = newItem.copy(id = itemId)
+                            val matches = findPotentialMatches(savedItem)
+                            val postedStatus = savedItem.status
                             _uiState.value = _uiState.value.copy(
                                 isLoading = false,
                                 isSuccess = true
                             )
-                            // Reset form and navigate back
                             resetForm()
-                            onSuccess()
+                            onSuccess(matches, postedStatus)
                         },
                         onFailure = { error ->
                             _uiState.value = _uiState.value.copy(
@@ -280,5 +286,57 @@ class AddItemViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    private suspend fun findPotentialMatches(item: LostItem): List<LostItem> {
+        return when (item.status) {
+            ItemStatus.LOST -> {
+                val aiMatches = matchingApiService.findMatchesForLostItem(item).getOrNull().orEmpty()
+                if (aiMatches.isNotEmpty()) {
+                    aiMatches
+                } else {
+                    findMatchesLocally(item, targetStatus = ItemStatus.FOUND)
+                }
+            }
+            ItemStatus.FOUND -> findMatchesLocally(item, targetStatus = ItemStatus.LOST)
+        }
+    }
+
+    private suspend fun findMatchesLocally(item: LostItem, targetStatus: ItemStatus): List<LostItem> {
+        val candidates = firebaseService.getAllLostItems(
+            status = targetStatus.name,
+            limit = 100
+        ).getOrDefault(emptyList())
+            .filter { it.id != item.id && it.userId != item.userId }
+
+        return candidates
+            .map { candidate -> candidate to quickSimilarity(item, candidate) }
+            .filter { (_, score) -> score >= 40 }
+            .sortedByDescending { (_, score) -> score }
+            .map { (candidate, _) -> candidate }
+            .take(5)
+    }
+
+    private fun quickSimilarity(source: LostItem, candidate: LostItem): Int {
+        var score = 0
+        if (source.category == candidate.category) score += 40
+        if (source.location.equals(candidate.location, ignoreCase = true)) score += 25
+
+        val sourceTokens = tokenize(source.title + " " + source.description)
+        val candidateTokens = tokenize(candidate.title + " " + candidate.description)
+        val overlap = sourceTokens.intersect(candidateTokens).size
+        if (overlap > 0) {
+            score += minOf(35, overlap * 8)
+        }
+
+        return score.coerceIn(0, 100)
+    }
+
+    private fun tokenize(text: String): Set<String> {
+        return text.lowercase()
+            .replace(Regex("[^a-z0-9\\s]"), " ")
+            .split(Regex("\\s+"))
+            .filter { it.length > 2 }
+            .toSet()
     }
 }

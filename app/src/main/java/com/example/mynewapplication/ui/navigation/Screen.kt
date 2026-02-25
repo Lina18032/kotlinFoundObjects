@@ -14,6 +14,7 @@ sealed class Screen(
     object Add : Screen("add", "Add Item")
     object Messages : Screen("messages", "Messages", Icons.Default.Message)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
+    object MatchResults : Screen("match_results", "Similar Posts")
     object Login : Screen("login", "Login")
     object ItemDetail : Screen("item/{itemId}", "Item Details") {
         fun createRoute(itemId: String) = "item/$itemId"

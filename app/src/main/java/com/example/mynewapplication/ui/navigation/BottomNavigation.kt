@@ -6,7 +6,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import com.example.mynewapplication.ui.navigation.Screen
 import com.example.mynewapplication.ui.navigation.bottomNavItems
+import com.example.mynewapplication.ui.theme.DarkCard
 import com.example.mynewapplication.ui.theme.DarkSurface
+import com.example.mynewapplication.ui.theme.PrimaryBlue
+import com.example.mynewapplication.ui.theme.TextSecondary
 
 @Composable
 fun BottomNavigationBar(
@@ -25,7 +28,14 @@ fun BottomNavigationBar(
                         Icon(it, contentDescription = screen.title)
                     }
                 },
-                label = { Text(screen.title) }
+                label = { Text(screen.title) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = PrimaryBlue,
+                    selectedTextColor = PrimaryBlue,
+                    unselectedIconColor = TextSecondary,
+                    unselectedTextColor = TextSecondary,
+                    indicatorColor = DarkCard
+                )
             )
         }
     }

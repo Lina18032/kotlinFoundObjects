@@ -55,6 +55,10 @@ fun SearchTopBar(
                     focusedBorderColor = PrimaryBlue,
                     unfocusedBorderColor = DarkCard,
                     containerColor = DarkCard,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedLabelColor = Color.White,
+                    unfocusedLabelColor = TextSecondary,
                     cursorColor = PrimaryBlue
                 ),
                 shape = RoundedCornerShape(12.dp),

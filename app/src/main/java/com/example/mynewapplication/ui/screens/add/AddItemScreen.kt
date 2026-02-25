@@ -38,11 +38,14 @@ import com.example.mynewapplication.utils.Constants
 @Composable
 fun AddItemScreen(
     onBack: () -> Unit,
-    onItemPosted: () -> Unit,
+    onItemPosted: (List<LostItem>) -> Unit,
     itemToEdit: LostItem? = null,
     viewModel: AddItemViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showMatchDialog by remember { mutableStateOf(false) }
+    var matchedItems by remember { mutableStateOf<List<LostItem>>(emptyList()) }
+    var postedStatus by remember { mutableStateOf(ItemStatus.LOST) }
 
     // Initialize if editing
     LaunchedEffect(itemToEdit) {
@@ -72,11 +75,12 @@ fun AddItemScreen(
                 title = { Text(if (uiState.isEditMode) "Edit Item" else "Add Item") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkBackground
+                    containerColor = DarkBackground,
+                    titleContentColor = Color.White
                 )
             )
         },
@@ -175,8 +179,14 @@ fun AddItemScreen(
                         if (uiState.isEditMode) "Save Changes" else "Post Item"
                     },
                     onClick = {
-                        viewModel.submitItem {
-                            onItemPosted()
+                        viewModel.submitItem { matches, status ->
+                            postedStatus = status
+                            if (matches.isNotEmpty()) {
+                                matchedItems = matches
+                                showMatchDialog = true
+                            } else {
+                                onItemPosted(emptyList())
+                            }
                         }
                     },
                     enabled = uiState.isValid && !uiState.isLoading,
@@ -194,6 +204,46 @@ fun AddItemScreen(
             selectedCategory = uiState.category,
             onCategorySelected = viewModel::onCategorySelected,
             onDismiss = viewModel::hideCategoryDialog
+        )
+    }
+
+    if (showMatchDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showMatchDialog = false
+                onItemPosted(emptyList())
+            },
+            title = { Text("Potential Match Found") },
+            text = {
+                Text(
+                    if (postedStatus == ItemStatus.LOST) {
+                        "Someone may have found your item. Check similar posts now?"
+                    } else {
+                        "Someone may have lost a similar item. Check similar posts now?"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMatchDialog = false
+                        onItemPosted(matchedItems)
+                    }
+                ) {
+                    Text("Check")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showMatchDialog = false
+                        onItemPosted(emptyList())
+                    }
+                ) {
+                    Text("Later")
+                }
+            },
+            containerColor = DarkCard
         )
     }
 }
